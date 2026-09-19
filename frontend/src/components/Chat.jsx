@@ -55,6 +55,7 @@ const mockMessages = [
 export default function Chat() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState(mockMessages);
+  const [isLoading, setIsLoading] = useState(false);
 
   const toggleReasoning = (id) => {
     setMessages(messages.map(msg =>
@@ -62,30 +63,88 @@ export default function Chat() {
     ));
   };
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
 
+    const userMessageContent = input;
     const newUserMsg = {
       id: Date.now(),
       role: 'user',
-      content: input
+      content: userMessageContent
     };
 
-    setMessages([...messages, newUserMsg]);
+    setMessages(prev => [...prev, newUserMsg]);
     setInput('');
+    setIsLoading(true);
 
-    // Simulate thinking...
-    setTimeout(() => {
-       const reasoningId = Date.now() + 1;
-       setMessages(prev => [...prev, {
-         id: reasoningId,
-         role: 'system',
-         type: 'reasoning',
-         content: "Analyzing request...\nIdentifying intents...",
-         isExpanded: true,
-         status: 'thinking'
-       }]);
-    }, 500);
+    // Show thinking indicator
+    const reasoningId = Date.now() + 1;
+    setMessages(prev => [...prev, {
+      id: reasoningId,
+      role: 'system',
+      type: 'reasoning',
+      content: "Analyzing request with LLM...",
+      isExpanded: true,
+      status: 'thinking'
+    }]);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: userMessageContent }),
+      });
+
+      const data = await response.json();
+
+      // Remove thinking indicator
+      setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
+
+      if (data.status === 'success') {
+          // Show routing and execution
+          setMessages(prev => [...prev,
+              {
+                id: Date.now() + 2,
+                role: 'system',
+                type: 'routing',
+                agent: data.action_executed
+              },
+              {
+                id: Date.now() + 3,
+                role: 'system',
+                type: 'execution',
+                script: `${data.action_executed}.py`,
+                logs: [`[INFO] Executing ${data.action_executed}...`, `[SUCCESS] ${JSON.stringify(data.result)}`],
+                status: 'completed'
+              },
+              {
+                  id: Date.now() + 4,
+                  role: 'assistant',
+                  content: data.result.message || "Action completed successfully."
+              }
+          ]);
+      } else {
+          // Clarification or Error
+          setMessages(prev => [...prev, {
+              id: Date.now() + 2,
+              role: 'assistant',
+              content: data.message || "I'm not sure how to handle that."
+          }]);
+      }
+
+    } catch (error) {
+      console.error("Failed to connect to backend:", error);
+      setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
+      setMessages(prev => [...prev, {
+          id: Date.now() + 2,
+          role: 'assistant',
+          content: "Sorry, I couldn't connect to the backend server."
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -237,11 +296,12 @@ export default function Chat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Type your request (e.g., 'Generate an NOC for John Doe...')"
-            className="w-full pl-4 pr-12 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-sm"
+            className="w-full pl-4 pr-12 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-sm disabled:opacity-50"
+            disabled={isLoading}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isLoading}
             className="absolute right-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-5 h-5" />

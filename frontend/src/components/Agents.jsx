@@ -1,33 +1,24 @@
 import React, { useState } from 'react';
-import { Bot, FileText, Database, Activity, Code, Settings2, Play, Search, X } from 'lucide-react';
+import { Bot, Ticket, CreditCard, Activity, Code, Settings2, Play, Search, X } from 'lucide-react';
 
 const mockAgents = [
   {
     id: 1,
-    name: 'NOC Generator',
-    description: 'Generates No Objection Certificates for employee travel or external requests based on context.',
+    name: 'Create Support Ticket',
+    description: 'Creates a support ticket for a given user with an issue description.',
     status: 'active',
-    keywords: ['noc', 'certificate', 'objection', 'travel letter'],
-    icon: FileText,
-    script: 'generate_noc.py'
+    parameters: ['user_id', 'issue_description'],
+    icon: Ticket,
+    script: 'create_support_ticket.py'
   },
   {
     id: 2,
-    name: 'Data Analyzer',
-    description: 'Processes CSV/Excel files and provides statistical summaries and insights.',
+    name: 'Get Account Status',
+    description: 'Retrieves the status of an account given the account number.',
     status: 'active',
-    keywords: ['analyze', 'data', 'stats', 'csv', 'excel'],
-    icon: Database,
-    script: 'analyze_data.py'
-  },
-  {
-    id: 3,
-    name: 'System Monitor',
-    description: 'Checks health of internal services and generates incident reports.',
-    status: 'inactive',
-    keywords: ['health', 'status', 'monitor', 'incident'],
-    icon: Activity,
-    script: 'check_health.py'
+    parameters: ['account_number'],
+    icon: CreditCard,
+    script: 'get_account_status.py'
   }
 ];
 
@@ -94,17 +85,15 @@ export default function Agents() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">{agent.name}</h3>
                 <p className="text-sm text-gray-500 line-clamp-2 mb-4">{agent.description}</p>
 
-                <div className="flex flex-wrap gap-1.5 mt-auto">
-                  {agent.keywords.slice(0, 3).map(kw => (
-                    <span key={kw} className="px-2 py-1 bg-gray-50 text-gray-500 rounded text-xs border border-gray-100">
-                      {kw}
-                    </span>
-                  ))}
-                  {agent.keywords.length > 3 && (
-                    <span className="px-2 py-1 bg-gray-50 text-gray-500 rounded text-xs border border-gray-100">
-                      +{agent.keywords.length - 3}
-                    </span>
-                  )}
+                <div className="mt-auto">
+                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Required Parameters</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {agent.parameters.map(param => (
+                        <span key={param} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-mono border border-gray-200">
+                          {param}
+                        </span>
+                      ))}
+                    </div>
                 </div>
               </div>
             ))}
@@ -162,7 +151,7 @@ export default function Agents() {
                     <textarea
                       className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       rows="3"
-                      defaultValue={`Extract necessary entities (name, destination, dates) for NOC generation. Return JSON format.`}
+                      defaultValue={`Extract necessary entities to fulfill the workflow action. Return JSON format.`}
                     />
                   </div>
                 </div>
@@ -175,16 +164,13 @@ export default function Agents() {
                   I/O Parameters
                 </h4>
                 <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">context.name</span>
-                    <span className="text-gray-400 text-xs">→</span>
-                    <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-1 rounded">args.employee_name</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">context.destination</span>
-                    <span className="text-gray-400 text-xs">→</span>
-                    <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-1 rounded">args.travel_dest</span>
-                  </div>
+                    {selectedAgent.parameters.map((param) => (
+                      <div key={param} className="flex items-center gap-3">
+                        <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">llm_output.{param}</span>
+                        <span className="text-gray-400 text-xs">→</span>
+                        <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-1 rounded">args.{param}</span>
+                      </div>
+                    ))}
                 </div>
               </div>
 
@@ -211,20 +197,9 @@ export default function Agents() {
                   </div>
                   <div className="p-4 overflow-auto">
                     <pre className="text-xs font-mono text-gray-300 leading-relaxed">
-<span className="text-pink-400">import</span> sys{'\n'}
-<span className="text-pink-400">import</span> json{'\n'}
-<span className="text-pink-400">from</span> document_gen <span className="text-pink-400">import</span> PDFGenerator{'\n\n'}
-<span className="text-blue-400">def</span> <span className="text-yellow-200">generate_noc</span>(args):{'\n'}
-{'    '}data = json.loads(args){'\n'}
-{'    '}name = data.get(<span className="text-green-300">'employee_name'</span>){'\n'}
-{'    '}dest = data.get(<span className="text-green-300">'travel_dest'</span>){'\n\n'}
-{'    '}print(<span className="text-green-300">f"[INFO] Generating NOC for {'{name}'}"</span>){'\n'}
-{'    '}generator = PDFGenerator(template=<span className="text-green-300">'noc_std'</span>){'\n'}
-{'    '}output = generator.build(name=name, dest=dest){'\n\n'}
-{'    '}<span className="text-pink-400">return</span> output{'\n\n'}
-<span className="text-pink-400">if</span> __name__ == <span className="text-green-300">"__main__"</span>:{'\n'}
-{'    '}res = generate_noc(sys.argv[<span className="text-purple-300">1</span>]){'\n'}
-{'    '}print(<span className="text-green-300">f"[SUCCESS] Saved to {'{res}'}"</span>)
+<span className="text-blue-400">def</span> <span className="text-yellow-200">{selectedAgent.script.replace('.py', '')}</span>(**kwargs):{'\n'}
+{'    '}print(<span className="text-green-300">f"[INFO] Executing {selectedAgent.name}"</span>){'\n'}
+{'    '}<span className="text-pink-400">return</span> <span className="text-green-300">"Success"</span>
                     </pre>
                   </div>
                 </div>
