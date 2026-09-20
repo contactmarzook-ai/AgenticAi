@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Send, Terminal, Loader2, FileText, ChevronDown, ChevronRight, User, Bot, Route } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, Terminal, Loader2, FileText, ChevronDown, ChevronRight, User, Bot, Route, AlertCircle, X } from 'lucide-react';
 
 const mockMessages = [
   {
@@ -52,9 +52,71 @@ const mockMessages = [
   }
 ];
 
-export default function Chat() {
+import api from '../store/api';
+import { useAuthStore } from '../store/authStore';
+
+export default function Chat({ sessionId, setSessionId }) {
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState(mockMessages);
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [toastError, setToastError] = useState(null);
+  const token = useAuthStore((state) => state.token);
+
+  useEffect(() => {
+    const fetchMessages = async () => {
+      if (!sessionId) {
+          setMessages([]);
+          return;
+      }
+      try {
+        const res = await api.get(`/chat/sessions/${sessionId}/messages`);
+
+        // Map backend schema to frontend UI schema
+        const mapped = [];
+        res.data.forEach(msg => {
+            if (msg.role === 'user') {
+                mapped.push({ id: msg.id, role: 'user', content: msg.content });
+            } else if (msg.role === 'assistant') {
+
+                // If there's an execution trace, inject the visual blocks first
+                if (msg.metadata_json && msg.metadata_json.execution) {
+                    const trace = msg.metadata_json.execution;
+                    mapped.push({
+                        id: `route-${msg.id}`,
+                        role: 'system',
+                        type: 'routing',
+                        agent: msg.metadata_json.llm_routing?.action === 'agent' ? 'Agent Execution' : 'Workflow Pipeline'
+                    });
+                    mapped.push({
+                        id: `exec-${msg.id}`,
+                        role: 'system',
+                        type: 'execution',
+                        script: "target.py",
+                        logs: [`[INFO] Executing target...`, `[SUCCESS] ${JSON.stringify(trace).substring(0, 100)}...`],
+                        status: 'completed'
+                    });
+                }
+
+                mapped.push({ id: msg.id, role: 'assistant', content: msg.content });
+            }
+        });
+        setMessages(mapped);
+
+      } catch (err) {
+        console.error("Failed to fetch messages", err);
+        setToastError("Failed to load chat history.");
+      }
+    };
+
+    fetchMessages();
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (toastError) {
+      const timer = setTimeout(() => setToastError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastError]);
 
   const toggleReasoning = (id) => {
     setMessages(messages.map(msg =>
@@ -62,38 +124,123 @@ export default function Chat() {
     ));
   };
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
 
+    const userMessageContent = input;
     const newUserMsg = {
       id: Date.now(),
       role: 'user',
-      content: input
+      content: userMessageContent
     };
 
-    setMessages([...messages, newUserMsg]);
+    setMessages(prev => [...prev, newUserMsg]);
     setInput('');
+    setIsLoading(true);
 
-    // Simulate thinking...
-    setTimeout(() => {
-       const reasoningId = Date.now() + 1;
-       setMessages(prev => [...prev, {
-         id: reasoningId,
-         role: 'system',
-         type: 'reasoning',
-         content: "Analyzing request...\nIdentifying intents...",
-         isExpanded: true,
-         status: 'thinking'
-       }]);
-    }, 500);
+    // Show thinking indicator
+    const reasoningId = Date.now() + 1;
+    setMessages(prev => [...prev, {
+      id: reasoningId,
+      role: 'system',
+      type: 'reasoning',
+      content: "Analyzing request with LLM...",
+      isExpanded: true,
+      status: 'thinking'
+    }]);
+
+    try {
+      if (!token) {
+        setToastError("Authentication failed. Cannot send message.");
+        setIsLoading(false);
+        setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
+        return;
+      }
+
+      let currentSessionId = sessionId;
+
+      // Create session if it doesn't exist
+      if (!currentSessionId) {
+          const sessionRes = await api.post(`/chat/sessions?title=${encodeURIComponent(userMessageContent.substring(0, 20) + "...")}`);
+          currentSessionId = sessionRes.data.id;
+          setSessionId(currentSessionId);
+      }
+
+      const response = await api.post(`/chat/sessions/${currentSessionId}/send`, {
+        message: userMessageContent
+      });
+
+      const data = response.data;
+
+      // Remove thinking indicator
+      setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
+
+      if (data.status === 'error') {
+          setMessages(prev => [...prev, {
+              id: Date.now() + 2,
+              role: 'system',
+              type: 'error',
+              content: data.message || "An unknown error occurred during orchestration."
+          }]);
+      } else if (data.status === 'success' && data.execution_trace) {
+
+          let logStr = JSON.stringify(data.execution_trace);
+
+          setMessages(prev => [...prev,
+              {
+                id: Date.now() + 2,
+                role: 'system',
+                type: 'routing',
+                agent: data.action === 'agent' ? "Agent Execution" : "Workflow Pipeline"
+              },
+              {
+                id: Date.now() + 3,
+                role: 'system',
+                type: 'execution',
+                script: data.action === 'agent' ? "agent_script.py" : "workflow_pipeline.py",
+                logs: [`[INFO] Executing target...`, `[SUCCESS] ${logStr.substring(0, 100)}...`],
+                status: 'completed'
+              },
+              {
+                  id: Date.now() + 4,
+                  role: 'assistant',
+                  content: data.message || "Action completed successfully."
+              }
+          ]);
+      } else {
+          setMessages(prev => [...prev, {
+              id: Date.now() + 2,
+              role: 'assistant',
+              content: data.message || "I'm not sure how to handle that."
+          }]);
+      }
+
+    } catch (error) {
+      console.error("Failed to connect to backend:", error);
+      setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
+      setToastError("Network Error: Could not connect to the orchestrator backend.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 relative">
         <h2 className="text-xl font-semibold text-gray-800">Chat Orchestrator</h2>
         <p className="text-sm text-gray-500">Interact with the agent system to perform tasks</p>
+
+        {/* Toast Notification */}
+        {toastError && (
+          <div className="absolute top-4 right-6 bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded-lg shadow-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+             <AlertCircle className="w-5 h-5" />
+             <span className="text-sm font-medium">{toastError}</span>
+             <button onClick={() => setToastError(null)} className="p-1 hover:bg-red-100 rounded-md transition-colors ml-2">
+               <X className="w-4 h-4" />
+             </button>
+          </div>
+        )}
       </div>
 
       {/* Message Timeline */}
@@ -186,18 +333,31 @@ export default function Chat() {
                   </div>
                 )}
 
+                {/* Error State Block */}
+                {msg.type === 'error' && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg shadow-sm overflow-hidden max-w-2xl mt-4">
+                     <div className="px-4 py-3 border-b border-red-200 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                        <span className="text-sm font-medium text-red-700">Orchestration Error</span>
+                     </div>
+                     <div className="px-4 py-3">
+                         <p className="text-sm text-red-600">{msg.content}</p>
+                     </div>
+                  </div>
+                )}
+
                 {/* Execution State */}
                 {msg.type === 'execution' && (
-                  <div className="bg-[#1e1e1e] rounded-lg shadow-lg overflow-hidden max-w-3xl mt-4 border border-gray-800">
-                    <div className="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] border-b border-gray-800">
+                  <div className="bg-[#0D1117] rounded-lg shadow-lg overflow-hidden max-w-3xl mt-4 border border-[#30363D]">
+                    <div className="flex items-center justify-between px-4 py-2 bg-[#161B22] border-b border-[#30363D]">
                       <div className="flex items-center gap-2 text-gray-400">
                         <Terminal className="w-4 h-4" />
-                        <span className="text-xs font-mono">{msg.script}</span>
+                        <span className="text-xs font-mono text-gray-300">{msg.script}</span>
                       </div>
                       <div className="flex gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-green-500/80"></div>
+                        <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
+                        <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
+                        <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
                       </div>
                     </div>
                     <div className="p-4 font-mono text-xs text-gray-300 space-y-1.5 overflow-x-auto">
@@ -237,11 +397,12 @@ export default function Chat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Type your request (e.g., 'Generate an NOC for John Doe...')"
-            className="w-full pl-4 pr-12 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-sm"
+            className="w-full pl-4 pr-12 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-sm disabled:opacity-50"
+            disabled={isLoading}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isLoading}
             className="absolute right-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-5 h-5" />
