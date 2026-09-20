@@ -54,10 +54,10 @@ def call_llama(prompt: str) -> Dict[str, Any]:
         try:
             return json.loads(content)
         except json.JSONDecodeError:
-            return {"action": "clarify", "message": "Failed to parse LLM output as JSON."}
+            return {"action": "error", "message": "Failed to parse LLM output as JSON."}
 
     except requests.exceptions.RequestException as e:
-        return {"action": "clarify", "message": f"Error communicating with local LLM: {str(e)}"}
+        return {"action": "error", "message": f"Error communicating with local LLM: {str(e)}"}
 
 def process_agent_interaction(user_input: str) -> Dict[str, Any]:
     """
@@ -69,6 +69,12 @@ def process_agent_interaction(user_input: str) -> Dict[str, Any]:
     llm_response = call_llama(full_prompt)
 
     action = llm_response.get("action")
+
+    if action == "error":
+        return {
+            "status": "error",
+            "message": llm_response.get("message", "An unexpected error occurred.")
+        }
 
     if action in ["clarify", "chat"]:
         return {

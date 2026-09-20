@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Send, Terminal, Loader2, FileText, ChevronDown, ChevronRight, User, Bot, Route } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, Terminal, Loader2, FileText, ChevronDown, ChevronRight, User, Bot, Route, AlertCircle, X } from 'lucide-react';
 
 const mockMessages = [
   {
@@ -56,6 +56,14 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState(mockMessages);
   const [isLoading, setIsLoading] = useState(false);
+  const [toastError, setToastError] = useState(null);
+
+  useEffect(() => {
+    if (toastError) {
+      const timer = setTimeout(() => setToastError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastError]);
 
   const toggleReasoning = (id) => {
     setMessages(messages.map(msg =>
@@ -102,7 +110,15 @@ export default function Chat() {
       // Remove thinking indicator
       setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
 
-      if (data.status === 'success') {
+      if (data.status === 'error') {
+          // Explicit error block
+          setMessages(prev => [...prev, {
+              id: Date.now() + 2,
+              role: 'system',
+              type: 'error',
+              content: data.message || "An unknown error occurred during orchestration."
+          }]);
+      } else if (data.status === 'success') {
           // Show routing and execution
           setMessages(prev => [...prev,
               {
@@ -137,11 +153,7 @@ export default function Chat() {
     } catch (error) {
       console.error("Failed to connect to backend:", error);
       setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
-      setMessages(prev => [...prev, {
-          id: Date.now() + 2,
-          role: 'assistant',
-          content: "Sorry, I couldn't connect to the backend server."
-      }]);
+      setToastError("Network Error: Could not connect to the orchestrator backend.");
     } finally {
       setIsLoading(false);
     }
@@ -150,9 +162,20 @@ export default function Chat() {
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 relative">
         <h2 className="text-xl font-semibold text-gray-800">Chat Orchestrator</h2>
         <p className="text-sm text-gray-500">Interact with the agent system to perform tasks</p>
+
+        {/* Toast Notification */}
+        {toastError && (
+          <div className="absolute top-4 right-6 bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded-lg shadow-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+             <AlertCircle className="w-5 h-5" />
+             <span className="text-sm font-medium">{toastError}</span>
+             <button onClick={() => setToastError(null)} className="p-1 hover:bg-red-100 rounded-md transition-colors ml-2">
+               <X className="w-4 h-4" />
+             </button>
+          </div>
+        )}
       </div>
 
       {/* Message Timeline */}
@@ -245,18 +268,31 @@ export default function Chat() {
                   </div>
                 )}
 
+                {/* Error State Block */}
+                {msg.type === 'error' && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg shadow-sm overflow-hidden max-w-2xl mt-4">
+                     <div className="px-4 py-3 border-b border-red-200 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                        <span className="text-sm font-medium text-red-700">Orchestration Error</span>
+                     </div>
+                     <div className="px-4 py-3">
+                         <p className="text-sm text-red-600">{msg.content}</p>
+                     </div>
+                  </div>
+                )}
+
                 {/* Execution State */}
                 {msg.type === 'execution' && (
-                  <div className="bg-[#1e1e1e] rounded-lg shadow-lg overflow-hidden max-w-3xl mt-4 border border-gray-800">
-                    <div className="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] border-b border-gray-800">
+                  <div className="bg-[#0D1117] rounded-lg shadow-lg overflow-hidden max-w-3xl mt-4 border border-[#30363D]">
+                    <div className="flex items-center justify-between px-4 py-2 bg-[#161B22] border-b border-[#30363D]">
                       <div className="flex items-center gap-2 text-gray-400">
                         <Terminal className="w-4 h-4" />
-                        <span className="text-xs font-mono">{msg.script}</span>
+                        <span className="text-xs font-mono text-gray-300">{msg.script}</span>
                       </div>
                       <div className="flex gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
-                        <div className="w-2.5 h-2.5 rounded-full bg-green-500/80"></div>
+                        <div className="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
+                        <div className="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
+                        <div className="w-3 h-3 rounded-full bg-[#27C93F]"></div>
                       </div>
                     </div>
                     <div className="p-4 font-mono text-xs text-gray-300 space-y-1.5 overflow-x-auto">
