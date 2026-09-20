@@ -54,7 +54,7 @@ class Agent(Base):
     name: Mapped[str] = mapped_column(String, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     trigger_keywords: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    python_code: Mapped[str] = mapped_column(Text)
+    handler: Mapped[str] = mapped_column(String)
     input_schema: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)

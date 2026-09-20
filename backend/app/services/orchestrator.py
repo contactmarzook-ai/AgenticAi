@@ -123,7 +123,7 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
 
         agent = db.query(Agent).filter(Agent.id == target_id).first()
         if agent:
-             exe_result = execute_agent_script(agent.python_code, params)
+             exe_result = execute_agent_script(agent.handler, params)
              metadata["execution"] = exe_result
              final_response["execution_trace"] = exe_result
 

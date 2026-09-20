@@ -67,7 +67,7 @@ def run_workflow_pipeline(workflow_id: int, initial_input: Dict[str, Any], db: S
             }
 
         # Execute the agent script
-        step_result = execute_agent_script(agent.python_code, current_input)
+        step_result = execute_agent_script(agent.handler, current_input)
 
         # Check for execution failure
         if step_result.get("status") == "error":

@@ -22,58 +22,28 @@ def db_session():
         Base.metadata.drop_all(bind=engine)
 
 def test_execute_agent_script_success():
-    """Test dynamically executing a python script for NOC generation."""
-    script = """
-account_id = params.get('account_id')
-if not account_id:
-    raise ValueError("account_id is required")
-
-noc_text = f"This is an official NOC for account: {account_id}. Approved."
-
-output['status'] = 'success'
-output['noc_content'] = noc_text
-output['document_id'] = f"DOC-{account_id}"
-"""
-    params = {"account_id": "ACC123"}
-    result = execute_agent_script(script, params)
+    """Test executing a registered python handler."""
+    params = {"employee_name": "John Doe"}
+    result = execute_agent_script("mock_noc_generator", params)
 
     assert result.get("status") == "success"
-    assert result.get("noc_content") == "This is an official NOC for account: ACC123. Approved."
-    assert result.get("document_id") == "DOC-ACC123"
+    assert "John Doe" in result.get("message")
 
 def test_execute_agent_script_failure():
-    """Test dynamic execution handling errors and traceback."""
-    script = """
-x = 1 / 0  # This will throw ZeroDivisionError
-"""
-    result = execute_agent_script(script, {})
+    """Test handler execution with unknown handler."""
+    result = execute_agent_script("unknown_handler", {})
     assert result.get("status") == "error"
-    assert "division by zero" in result.get("error").lower()
-    assert "Traceback" in result.get("traceback")
+    assert "not found in registry" in result.get("error").lower()
 
 def test_run_workflow_pipeline(db_session):
     """Test chaining two mock agents together."""
 
-    # Agent 1: Extracts data
-    agent1_script = """
-user_query = params.get('query')
-# Mock logic extracting an account ID
-extracted_id = "ACC-999"
-
-output['account_id'] = extracted_id
-output['original_query'] = user_query
-"""
-    agent1 = Agent(name="DataExtractor", python_code=agent1_script, is_active=True)
+    # Agent 1: Data Analyzer
+    agent1 = Agent(name="DataAnalyzer", handler="mock_data_analyzer", is_active=True)
     db_session.add(agent1)
 
-    # Agent 2: Generates Document based on extracted data
-    agent2_script = """
-acc_id = params.get('account_id')
-doc_type = "NOC"
-
-output['final_message'] = f"Generated {doc_type} for {acc_id}"
-"""
-    agent2 = Agent(name="DocGenerator", python_code=agent2_script, is_active=True)
+    # Agent 2: NOC Generator
+    agent2 = Agent(name="NOCGenerator", handler="mock_noc_generator", is_active=True)
     db_session.add(agent2)
     db_session.commit()
 
@@ -91,18 +61,17 @@ output['final_message'] = f"Generated {doc_type} for {acc_id}"
 
     # Check final output (from Agent 2)
     final_out = result.get("final_output")
-    assert final_out.get("final_message") == "Generated NOC for ACC-999"
+    assert "NOC" in final_out.get("message")
 
     # Check history
     history = result.get("history")
     assert len(history) == 2
 
     # Agent 1 history checks
-    assert history[0]["agent_name"] == "DataExtractor"
+    assert history[0]["agent_name"] == "DataAnalyzer"
     assert history[0]["input_used"] == initial_input
-    assert history[0]["output_produced"]["account_id"] == "ACC-999"
+    assert history[0]["output_produced"]["status"] == "success"
 
     # Agent 2 history checks
-    assert history[1]["agent_name"] == "DocGenerator"
-    assert history[1]["input_used"]["account_id"] == "ACC-999" # Input of 2 was output of 1
-    assert history[1]["output_produced"]["final_message"] == "Generated NOC for ACC-999"
+    assert history[1]["agent_name"] == "NOCGenerator"
+    assert history[1]["output_produced"]["status"] == "success"

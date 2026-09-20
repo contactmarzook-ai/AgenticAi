@@ -14,7 +14,7 @@ export default function Agents() {
     name: '',
     description: '',
     trigger_keywords: '',
-    python_code: 'output["status"] = "success"\noutput["message"] = "Hello from Agent!"\n',
+    handler: 'default_handler',
   });
   const [schemaFields, setSchemaFields] = useState([{ key: '', type: 'string', required: false }]);
 
@@ -226,18 +226,20 @@ export default function Agents() {
                         </div>
                         <div>
                             <div className="flex justify-between items-center mb-1">
-                                <label className="block text-sm font-medium text-gray-700">Python Script</label>
-                                <span className="text-[10px] uppercase font-bold text-gray-400">Execution Context</span>
+                                <label className="block text-sm font-medium text-gray-700">Agent Handler</label>
+                                <span className="text-[10px] uppercase font-bold text-gray-400">Registry Binding</span>
                             </div>
-                            <p className="text-xs text-gray-500 mb-2">Write standard Python. Variables <code className="bg-gray-100 px-1 rounded">params</code> (input dict) and <code className="bg-gray-100 px-1 rounded">output</code> (output dict) are pre-injected.</p>
-                            <textarea
+                            <p className="text-xs text-gray-500 mb-2">Select the registered python function that powers this agent.</p>
+                            <select
                                 required
-                                value={formData.python_code}
-                                onChange={e => setFormData({...formData, python_code: e.target.value})}
-                                rows={12}
-                                className="w-full font-mono text-sm border border-gray-800 rounded-md shadow-inner px-4 py-3 bg-[#0D1117] text-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                                spellCheck="false"
-                            />
+                                value={formData.handler}
+                                onChange={e => setFormData({...formData, handler: e.target.value})}
+                                className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
+                            >
+                                <option value="mock_noc_generator">mock_noc_generator</option>
+                                <option value="mock_data_analyzer">mock_data_analyzer</option>
+                                <option value="default_handler">default_handler</option>
+                            </select>
                         </div>
                     </form>
                 </div>

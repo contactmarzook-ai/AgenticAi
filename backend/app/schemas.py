@@ -54,7 +54,7 @@ class AgentBase(BaseModel):
     name: str
     description: Optional[str] = None
     trigger_keywords: Optional[str] = None
-    python_code: str
+    handler: str
     input_schema: Optional[Dict[str, Any]] = None
     is_active: bool = True
 
