@@ -57,6 +57,24 @@ export default function Chat() {
   const [messages, setMessages] = useState(mockMessages);
   const [isLoading, setIsLoading] = useState(false);
   const [toastError, setToastError] = useState(null);
+  const [token, setToken] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
+
+  useEffect(() => {
+    // Authenticate with mock SSO on mount
+    const authenticate = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/auth/sso/microsoft');
+        if (res.ok) {
+          const data = await res.json();
+          setToken(data.access_token);
+        }
+      } catch (err) {
+        console.error("Failed to fetch token", err);
+      }
+    };
+    if (!token) authenticate();
+  }, [token]);
 
   useEffect(() => {
     if (toastError) {
@@ -97,10 +115,38 @@ export default function Chat() {
     }]);
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      if (!token) {
+        setToastError("Authentication failed. Cannot send message.");
+        setIsLoading(false);
+        setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
+        return;
+      }
+
+      let currentSessionId = sessionId;
+
+      // Create session if it doesn't exist
+      if (!currentSessionId) {
+          const sessionRes = await fetch('http://localhost:8000/api/chat/sessions?title=New+Chat', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+              }
+          });
+          if (sessionRes.ok) {
+              const sessionData = await sessionRes.json();
+              currentSessionId = sessionData.id;
+              setSessionId(currentSessionId);
+          } else {
+              throw new Error("Failed to create chat session");
+          }
+      }
+
+      const response = await fetch(`http://localhost:8000/api/chat/sessions/${currentSessionId}/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ message: userMessageContent }),
       });
@@ -111,38 +157,38 @@ export default function Chat() {
       setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
 
       if (data.status === 'error') {
-          // Explicit error block
           setMessages(prev => [...prev, {
               id: Date.now() + 2,
               role: 'system',
               type: 'error',
               content: data.message || "An unknown error occurred during orchestration."
           }]);
-      } else if (data.status === 'success') {
-          // Show routing and execution
+      } else if (data.status === 'success' && data.execution_trace) {
+
+          let logStr = JSON.stringify(data.execution_trace);
+
           setMessages(prev => [...prev,
               {
                 id: Date.now() + 2,
                 role: 'system',
                 type: 'routing',
-                agent: data.action_executed
+                agent: data.action === 'agent' ? "Agent Execution" : "Workflow Pipeline"
               },
               {
                 id: Date.now() + 3,
                 role: 'system',
                 type: 'execution',
-                script: `${data.action_executed}.py`,
-                logs: [`[INFO] Executing ${data.action_executed}...`, `[SUCCESS] ${JSON.stringify(data.result)}`],
+                script: data.action === 'agent' ? "agent_script.py" : "workflow_pipeline.py",
+                logs: [`[INFO] Executing target...`, `[SUCCESS] ${logStr.substring(0, 100)}...`],
                 status: 'completed'
               },
               {
                   id: Date.now() + 4,
                   role: 'assistant',
-                  content: data.result.message || "Action completed successfully."
+                  content: data.message || "Action completed successfully."
               }
           ]);
       } else {
-          // Clarification or Error
           setMessages(prev => [...prev, {
               id: Date.now() + 2,
               role: 'assistant',

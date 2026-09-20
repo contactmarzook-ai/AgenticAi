@@ -16,11 +16,17 @@ def execute_agent_script(python_code: str, params: Dict[str, Any]) -> Dict[str, 
         A dictionary containing the state of the `output` variable after execution.
         If an error occurs, it returns an error dictionary with the traceback.
     """
-    # Restrict builtins to prevent highly dangerous operations (optional hardening)
-    # However, for full flexibility, we might need __builtins__.
-    # For now, we supply a clean context but allow standard builtins.
+    # Restrict builtins to prevent highly dangerous operations (RCE)
+    # Provide only safe builtins
+    safe_builtins = {
+        "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict,
+        "enumerate": enumerate, "float": float, "int": int, "len": len,
+        "list": list, "map": map, "max": max, "min": min, "set": set,
+        "str": str, "sum": sum, "tuple": tuple, "zip": zip,
+        "ValueError": ValueError, "TypeError": TypeError, "Exception": Exception
+    }
     exec_globals = {
-        "__builtins__": __builtins__
+        "__builtins__": safe_builtins
     }
 
     # We pass the input params directly into the local namespace,

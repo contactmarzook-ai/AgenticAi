@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from orchestrator import process_agent_interaction
 from app.database import Base, engine
 from app.auth import auth_router
+from app.routers.chat import chat_router
+from app.routers.agents import agents_router
+from app.routers.workflows import workflows_router
+from app.routers.admin import admin_router
 
 # Initialize database
 Base.metadata.create_all(bind=engine)
@@ -12,9 +15,10 @@ app = FastAPI(title="AgentOS Backend")
 
 # Include routers
 app.include_router(auth_router)
-
-class ChatRequest(BaseModel):
-    message: str
+app.include_router(chat_router)
+app.include_router(agents_router)
+app.include_router(workflows_router)
+app.include_router(admin_router)
 
 # Allow requests from frontend
 app.add_middleware(
@@ -28,8 +32,3 @@ app.add_middleware(
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "AgentOS Backend is running"}
-
-@app.post("/api/chat")
-def chat_endpoint(request: ChatRequest):
-    result = process_agent_interaction(request.message)
-    return result

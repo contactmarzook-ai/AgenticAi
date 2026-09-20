@@ -1,3 +1,4 @@
+import os
 import jwt
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,7 +8,7 @@ from .database import get_db
 from .models import User
 from .schemas import UserSchema
 
-SECRET_KEY = "super-secret-orchestrator-key-change-in-production"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback-secret-for-local-dev-only")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
 
