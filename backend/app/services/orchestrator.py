@@ -1,6 +1,6 @@
 import json
 import requests
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 from sqlalchemy.orm import Session
 
 from app.models import Agent, Workflow, ChatSession, ChatMessage, User
@@ -56,6 +56,44 @@ If it's just a conversational greeting, respond appropriately:
 """
     return prompt
 
+def fast_path_route(user_input: str, db: Session) -> Optional[Dict[str, Any]]:
+    """
+    Attempts to route the request quickly without an LLM by checking agent names and keywords.
+    Returns a routing dictionary if a confident match is found, otherwise None.
+    """
+    user_input_lower = user_input.lower().strip()
+    agents = db.query(Agent).filter(Agent.is_active == True).all()
+
+    best_match = None
+
+    for agent in agents:
+        # Check exact name match
+        if agent.name.lower() in user_input_lower:
+            best_match = agent
+            break
+
+        # Check trigger keywords
+        if agent.trigger_keywords:
+            keywords = [k.strip().lower() for k in agent.trigger_keywords.split(',')]
+            if any(kw in user_input_lower for kw in keywords):
+                best_match = agent
+                break
+
+    if best_match:
+        # For fast path, we might not extract parameters perfectly,
+        # but for simple requests without params, it's sufficient.
+        # If the agent requires parameters according to schema, we might still want to use LLM.
+        # But for this simple fast-path, we just pass what we have.
+        return {
+            "action": "agent",
+            "target_id": best_match.id,
+            "parameters": {"raw_input": user_input},
+            "confidence_score": 0.9,
+            "routing_method": "fast_path"
+        }
+
+    return None
+
 def call_llama(prompt: str) -> Dict[str, Any]:
     """
     Calls local Llama model via Ollama API, enforcing JSON output.
@@ -94,12 +132,17 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
     db.add(user_msg)
     db.commit()
 
-    # 2. Build prompt & call LLM
-    system_prompt = build_dynamic_prompt(db)
-    full_prompt = f"{system_prompt}\n\nUser Request: {user_input}"
+    # 2. Fast-Path Routing
+    route_response = fast_path_route(user_input, db)
 
-    llm_response = call_llama(full_prompt)
-    action = llm_response.get("action")
+    # 3. LLM Fallback (if fast path fails)
+    if not route_response:
+        system_prompt = build_dynamic_prompt(db)
+        full_prompt = f"{system_prompt}\n\nUser Request: {user_input}"
+        route_response = call_llama(full_prompt)
+        route_response["routing_method"] = "llm"
+
+    action = route_response.get("action")
 
     # Setup response payload
     final_response = {
@@ -107,28 +150,28 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
         "action": action,
         "message": "",
         "execution_trace": None,
-        "llm_reasoning": llm_response
+        "llm_reasoning": route_response if route_response.get("routing_method") == "llm" else None
     }
 
-    metadata = {"llm_routing": llm_response}
+    metadata = {"routing": route_response}
 
-    # 3. Route
-    confidence = llm_response.get("confidence_score", 1.0)
+    # 4. Route Execution
+    confidence = route_response.get("confidence_score", 1.0)
 
     if action == "error":
         final_response["status"] = "error"
-        final_response["message"] = llm_response.get("message", "An unknown error occurred.")
+        final_response["message"] = route_response.get("message", "An unknown error occurred.")
 
     elif action in ["clarify", "chat"]:
-        final_response["message"] = llm_response.get("message", "Could you provide more details?")
+        final_response["message"] = route_response.get("message", "Could you provide more details?")
 
     elif action in ["agent", "workflow"] and confidence < 0.7:
         final_response["action"] = "clarify"
         final_response["message"] = "I'm not confident about which tool to use. Could you clarify your request?"
 
     elif action == "agent":
-        target_id = llm_response.get("target_id")
-        params = llm_response.get("parameters", {})
+        target_id = route_response.get("target_id")
+        params = route_response.get("parameters", {})
 
         agent = db.query(Agent).filter(Agent.id == target_id).first()
         if agent:
@@ -146,8 +189,8 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
              final_response["message"] = f"Agent with ID {target_id} not found."
 
     elif action == "workflow":
-        target_id = llm_response.get("target_id")
-        params = llm_response.get("parameters", {})
+        target_id = route_response.get("target_id")
+        params = route_response.get("parameters", {})
 
         wf = db.query(Workflow).filter(Workflow.id == target_id).first()
         if wf:
