@@ -2,8 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from orchestrator import process_agent_interaction
+from app.database import Base, engine
+from app.auth import auth_router
+
+# Initialize database
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AgentOS Backend")
+
+# Include routers
+app.include_router(auth_router)
 
 class ChatRequest(BaseModel):
     message: str
