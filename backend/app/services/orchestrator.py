@@ -33,23 +33,26 @@ def build_dynamic_prompt(db: Session) -> str:
 
     tools_str = "\n".join(tools_desc) if tools_desc else "No tools available."
 
-    prompt = f"""You are an AI Orchestrator that acts as an intelligent router.
-Your job is to analyze user requests and determine which tool (agent or workflow) to execute.
+    prompt = f"""You are a lightweight, fast AI Router.
+Do NOT perform deep reasoning or generate multi-step plans.
+Your ONLY job is to identify the most appropriate registered tool (agent or workflow) for the user's request and extract parameters.
 
 Available tools:
 {tools_str}
 
 You MUST return your response as valid JSON ONLY, with NO markdown formatting, NO backticks, and NO conversational text.
 
-If you can map the request to a specific agent or workflow, return exactly:
-{{"action": "agent" or "workflow", "target_id": integer_id, "parameters": {{"param1": "value1"}}}}
+Include a "confidence_score" between 0.0 and 1.0 indicating how well the request matches the tool.
+
+If you clearly map the request to a tool (confidence >= 0.7), return:
+{{"action": "agent" or "workflow", "target_id": integer_id, "parameters": {{"param1": "value1"}}, "confidence_score": float}}
 Note: For workflows, parameters might be optional or empty depending on the first step.
 
-If the request is ambiguous, lacks required parameters, or doesn't match a tool, ask for clarification:
-{{"action": "clarify", "message": "Your clarification message here"}}
+If the request is ambiguous, doesn't clearly match a tool, or your confidence is below 0.7, return:
+{{"action": "clarify", "message": "I'm not sure which tool to use. Could you clarify your request?", "confidence_score": float}}
 
 If it's just a conversational greeting, respond appropriately:
-{{"action": "chat", "message": "Hello! How can I help you today?"}}
+{{"action": "chat", "message": "Hello! How can I help you today?", "confidence_score": 1.0}}
 """
     return prompt
 
@@ -110,12 +113,18 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
     metadata = {"llm_routing": llm_response}
 
     # 3. Route
+    confidence = llm_response.get("confidence_score", 1.0)
+
     if action == "error":
         final_response["status"] = "error"
         final_response["message"] = llm_response.get("message", "An unknown error occurred.")
 
     elif action in ["clarify", "chat"]:
         final_response["message"] = llm_response.get("message", "Could you provide more details?")
+
+    elif action in ["agent", "workflow"] and confidence < 0.7:
+        final_response["action"] = "clarify"
+        final_response["message"] = "I'm not confident about which tool to use. Could you clarify your request?"
 
     elif action == "agent":
         target_id = llm_response.get("target_id")
