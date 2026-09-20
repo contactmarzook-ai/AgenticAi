@@ -52,29 +52,64 @@ const mockMessages = [
   }
 ];
 
-export default function Chat() {
+import api from '../store/api';
+import { useAuthStore } from '../store/authStore';
+
+export default function Chat({ sessionId, setSessionId }) {
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState(mockMessages);
+  const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toastError, setToastError] = useState(null);
-  const [token, setToken] = useState(null);
-  const [sessionId, setSessionId] = useState(null);
+  const token = useAuthStore((state) => state.token);
 
   useEffect(() => {
-    // Authenticate with mock SSO on mount
-    const authenticate = async () => {
+    const fetchMessages = async () => {
+      if (!sessionId) {
+          setMessages([]);
+          return;
+      }
       try {
-        const res = await fetch('http://localhost:8000/api/auth/sso/microsoft');
-        if (res.ok) {
-          const data = await res.json();
-          setToken(data.access_token);
-        }
+        const res = await api.get(`/chat/sessions/${sessionId}/messages`);
+
+        // Map backend schema to frontend UI schema
+        const mapped = [];
+        res.data.forEach(msg => {
+            if (msg.role === 'user') {
+                mapped.push({ id: msg.id, role: 'user', content: msg.content });
+            } else if (msg.role === 'assistant') {
+
+                // If there's an execution trace, inject the visual blocks first
+                if (msg.metadata_json && msg.metadata_json.execution) {
+                    const trace = msg.metadata_json.execution;
+                    mapped.push({
+                        id: `route-${msg.id}`,
+                        role: 'system',
+                        type: 'routing',
+                        agent: msg.metadata_json.llm_routing?.action === 'agent' ? 'Agent Execution' : 'Workflow Pipeline'
+                    });
+                    mapped.push({
+                        id: `exec-${msg.id}`,
+                        role: 'system',
+                        type: 'execution',
+                        script: "target.py",
+                        logs: [`[INFO] Executing target...`, `[SUCCESS] ${JSON.stringify(trace).substring(0, 100)}...`],
+                        status: 'completed'
+                    });
+                }
+
+                mapped.push({ id: msg.id, role: 'assistant', content: msg.content });
+            }
+        });
+        setMessages(mapped);
+
       } catch (err) {
-        console.error("Failed to fetch token", err);
+        console.error("Failed to fetch messages", err);
+        setToastError("Failed to load chat history.");
       }
     };
-    if (!token) authenticate();
-  }, [token]);
+
+    fetchMessages();
+  }, [sessionId]);
 
   useEffect(() => {
     if (toastError) {
@@ -126,32 +161,16 @@ export default function Chat() {
 
       // Create session if it doesn't exist
       if (!currentSessionId) {
-          const sessionRes = await fetch('http://localhost:8000/api/chat/sessions?title=New+Chat', {
-              method: 'POST',
-              headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json'
-              }
-          });
-          if (sessionRes.ok) {
-              const sessionData = await sessionRes.json();
-              currentSessionId = sessionData.id;
-              setSessionId(currentSessionId);
-          } else {
-              throw new Error("Failed to create chat session");
-          }
+          const sessionRes = await api.post(`/chat/sessions?title=${encodeURIComponent(userMessageContent.substring(0, 20) + "...")}`);
+          currentSessionId = sessionRes.data.id;
+          setSessionId(currentSessionId);
       }
 
-      const response = await fetch(`http://localhost:8000/api/chat/sessions/${currentSessionId}/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ message: userMessageContent }),
+      const response = await api.post(`/chat/sessions/${currentSessionId}/send`, {
+        message: userMessageContent
       });
 
-      const data = await response.json();
+      const data = response.data;
 
       // Remove thinking indicator
       setMessages(prev => prev.filter(msg => msg.id !== reasoningId));
