@@ -3,6 +3,8 @@ import { useAuthStore } from './store/authStore';
 import Sidebar from './components/Sidebar';
 import Chat from './components/Chat';
 import Agents from './components/Agents';
+import Workflows from './components/Workflows';
+import Users from './components/Users';
 import Login from './components/Login';
 
 function App() {
@@ -26,8 +28,8 @@ function App() {
       <main className="flex-1 relative h-full overflow-hidden">
         {activeTab === 'chat' && <Chat sessionId={activeSessionId} setSessionId={setActiveSessionId} />}
         {activeTab === 'agents' && <Agents />}
-        {activeTab === 'workflows' && <div className="p-8">Workflows coming soon...</div>}
-        {activeTab === 'users' && <div className="p-8">User Management coming soon...</div>}
+        {activeTab === 'workflows' && <Workflows />}
+        {activeTab === 'users' && <Users />}
       </main>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MessageSquare, Bot, Settings, Hexagon, Plus, Users, Workflow, LogOut } from 'lucide-react';
+import { MessageSquare, Bot, Settings, Hexagon, Plus, Users, Workflow, LogOut, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import api from '../store/api';
 
@@ -8,17 +8,32 @@ export default function Sidebar({ activeTab, setActiveTab, activeSessionId, setA
   const logout = useAuthStore((state) => state.logout);
   const [sessions, setSessions] = useState([]);
 
+  const fetchSessions = async () => {
+    try {
+      const res = await api.get('/chat/sessions');
+      setSessions(res.data);
+    } catch (err) {
+      console.error("Failed to fetch sessions", err);
+    }
+  };
+
   useEffect(() => {
-    const fetchSessions = async () => {
-      try {
-        const res = await api.get('/chat/sessions');
-        setSessions(res.data);
-      } catch (err) {
-        console.error("Failed to fetch sessions", err);
-      }
-    };
     fetchSessions();
   }, [activeSessionId]); // Refetch when a new session is created
+
+  const handleDeleteSession = async (e, id) => {
+    e.stopPropagation();
+    try {
+      await api.delete(`/chat/sessions/${id}`);
+      if (activeSessionId === id) {
+        setActiveSessionId(null);
+        setActiveTab('chat');
+      }
+      fetchSessions();
+    } catch (err) {
+      console.error("Failed to delete session", err);
+    }
+  };
 
   const tabs = [
     { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -97,16 +112,23 @@ export default function Sidebar({ activeTab, setActiveTab, activeSessionId, setA
             <div className="space-y-1">
                 <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Recent Sessions</p>
                 {sessions.map(session => (
-                    <button
+                    <div
                         key={session.id}
                         onClick={() => {
                             setActiveSessionId(session.id);
                             setActiveTab('chat');
                         }}
-                        className={`w-full text-left px-3 py-2 text-sm truncate rounded-md transition-colors ${activeSessionId === session.id && activeTab === 'chat' ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                        className={`w-full group flex items-center justify-between cursor-pointer px-3 py-2 text-sm rounded-md transition-colors ${activeSessionId === session.id && activeTab === 'chat' ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
                     >
-                        {session.title}
-                    </button>
+                        <span className="truncate flex-1">{session.title}</span>
+                        <button
+                            onClick={(e) => handleDeleteSession(e, session.id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-opacity"
+                            title="Delete session"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    </div>
                 ))}
             </div>
         </div>

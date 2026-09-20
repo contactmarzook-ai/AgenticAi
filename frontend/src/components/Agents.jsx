@@ -1,235 +1,259 @@
-import React, { useState } from 'react';
-import { Bot, Ticket, CreditCard, Activity, Code, Settings2, Play, Search, X } from 'lucide-react';
-
-const mockAgents = [
-  {
-    id: 1,
-    name: 'Create Support Ticket',
-    description: 'Creates a support ticket for a given user with an issue description.',
-    status: 'active',
-    parameters: ['user_id', 'issue_description'],
-    icon: Ticket,
-    script: 'create_support_ticket.py'
-  },
-  {
-    id: 2,
-    name: 'Get Account Status',
-    description: 'Retrieves the status of an account given the account number.',
-    status: 'active',
-    parameters: ['account_number'],
-    icon: CreditCard,
-    script: 'get_account_status.py'
-  }
-];
+import React, { useState, useEffect } from 'react';
+import { Bot, Plus, X, Search, Code, CheckCircle, Clock, Trash2 } from 'lucide-react';
+import api from '../store/api';
+import { useAuthStore } from '../store/authStore';
 
 export default function Agents() {
-  const [selectedAgent, setSelectedAgent] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [agents, setAgents] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const user = useAuthStore((state) => state.user);
 
-  const filteredAgents = mockAgents.filter(agent =>
-    agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    agent.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Form State
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    trigger_keywords: '',
+    python_code: 'output["status"] = "success"\noutput["message"] = "Hello from Agent!"\n',
+  });
+  const [schemaFields, setSchemaFields] = useState([{ key: '', type: 'string', required: false }]);
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  const fetchAgents = async () => {
+    try {
+      const res = await api.get('/agents');
+      setAgents(res.data);
+    } catch (err) {
+      console.error("Failed to load agents", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateAgent = async (e) => {
+    e.preventDefault();
+    try {
+      const schemaObj = {
+        type: "object",
+        properties: {},
+        required: []
+      };
+
+      schemaFields.forEach(field => {
+        if (field.key) {
+          schemaObj.properties[field.key] = { type: field.type };
+          if (field.required) {
+            schemaObj.required.push(field.key);
+          }
+        }
+      });
+
+      await api.post('/agents', {
+          ...formData,
+          input_schema: schemaObj,
+          is_active: true
+      });
+      setIsModalOpen(false);
+      fetchAgents();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create agent");
+    }
+  };
+
+  const addSchemaField = () => {
+    setSchemaFields([...schemaFields, { key: '', type: 'string', required: false }]);
+  };
+
+  const updateSchemaField = (index, field, value) => {
+    const newFields = [...schemaFields];
+    newFields[index][field] = value;
+    setSchemaFields(newFields);
+  };
+
+  const removeSchemaField = (index) => {
+    const newFields = schemaFields.filter((_, i) => i !== index);
+    setSchemaFields(newFields);
+  };
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
 
-      {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${selectedAgent ? 'mr-96' : ''}`}>
-
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-8 py-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-semibold text-gray-800">Agents & Workflows</h2>
-              <p className="text-sm text-gray-500 mt-1">Manage agent configurations and underlying scripts</p>
-            </div>
-            <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm flex items-center gap-2">
-              <Bot className="w-4 h-4" />
-              New Agent
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-8 py-6 flex-shrink-0 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-100 p-2 rounded-lg">
+            <Bot className="w-6 h-6 text-indigo-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Agents</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage AI agents and their execution scripts</p>
+          </div>
+        </div>
+        {user?.role === 'admin' && (
+            <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-colors text-sm font-medium"
+            >
+                <Plus className="w-4 h-4" /> Create Agent
             </button>
-          </div>
-
-          {/* Search */}
-          <div className="mt-6 relative max-w-md">
-            <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search agents..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Agents Grid */}
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredAgents.map(agent => (
-              <div
-                key={agent.id}
-                onClick={() => setSelectedAgent(agent)}
-                className={`bg-white rounded-xl border ${selectedAgent?.id === agent.id ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200'} p-6 cursor-pointer hover:shadow-md transition-all group`}
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div className={`p-3 rounded-lg ${selectedAgent?.id === agent.id ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-50 text-gray-600 group-hover:bg-indigo-50 group-hover:text-indigo-600'} transition-colors`}>
-                    <agent.icon className="w-6 h-6" />
-                  </div>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    agent.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {agent.status}
-                  </span>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{agent.name}</h3>
-                <p className="text-sm text-gray-500 line-clamp-2 mb-4">{agent.description}</p>
-
-                <div className="mt-auto">
-                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Required Parameters</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {agent.parameters.map(param => (
-                        <span key={param} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-mono border border-gray-200">
-                          {param}
-                        </span>
-                      ))}
-                    </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Slide-over Editor Panel */}
-      <div
-        className={`fixed inset-y-0 right-0 w-[500px] bg-white border-l border-gray-200 shadow-2xl transform transition-transform duration-300 ease-in-out z-20 flex flex-col ${
-          selectedAgent ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      >
-        {selectedAgent && (
-          <>
-            {/* Panel Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-                  <selectedAgent.icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{selectedAgent.name}</h3>
-                  <p className="text-xs text-gray-500">Configuration & Script</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedAgent(null)}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Panel Content */}
-            <div className="flex-1 overflow-y-auto">
-
-              {/* Configuration Section */}
-              <div className="p-6 border-b border-gray-100">
-                <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2 mb-4">
-                  <Settings2 className="w-4 h-4 text-gray-500" />
-                  Agent Settings
-                </h4>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
-                    <textarea
-                      className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                      rows="2"
-                      defaultValue={selectedAgent.description}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">LLM System Instructions</label>
-                    <textarea
-                      className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                      rows="3"
-                      defaultValue={`Extract necessary entities to fulfill the workflow action. Return JSON format.`}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* I/O Mapping Section */}
-              <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2 mb-4">
-                  <Activity className="w-4 h-4 text-gray-500" />
-                  I/O Parameters
-                </h4>
-                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-                    {selectedAgent.parameters.map((param) => (
-                      <div key={param} className="flex items-center gap-3">
-                        <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">llm_output.{param}</span>
-                        <span className="text-gray-400 text-xs">→</span>
-                        <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-1 rounded">args.{param}</span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-
-              {/* Code Editor Section */}
-              <div className="p-6 flex-1 flex flex-col min-h-[300px]">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                    <Code className="w-4 h-4 text-gray-500" />
-                    Execution Script
-                  </h4>
-                  <span className="text-xs font-mono text-gray-500">{selectedAgent.script}</span>
-                </div>
-
-                <div className="flex-1 bg-[#1e1e1e] rounded-lg border border-gray-800 overflow-hidden flex flex-col">
-                  <div className="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] border-b border-gray-800">
-                    <div className="flex gap-1.5">
-                       <div className="w-2.5 h-2.5 rounded-full bg-gray-600"></div>
-                       <div className="w-2.5 h-2.5 rounded-full bg-gray-600"></div>
-                       <div className="w-2.5 h-2.5 rounded-full bg-gray-600"></div>
-                    </div>
-                    <button className="text-xs text-gray-400 hover:text-white flex items-center gap-1 transition-colors">
-                      <Play className="w-3 h-3" /> Run Test
-                    </button>
-                  </div>
-                  <div className="p-4 overflow-auto">
-                    <pre className="text-xs font-mono text-gray-300 leading-relaxed">
-<span className="text-blue-400">def</span> <span className="text-yellow-200">{selectedAgent.script.replace('.py', '')}</span>(**kwargs):{'\n'}
-{'    '}print(<span className="text-green-300">f"[INFO] Executing {selectedAgent.name}"</span>){'\n'}
-{'    '}<span className="text-pink-400">return</span> <span className="text-green-300">"Success"</span>
-                    </pre>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Panel Footer */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-              <button
-                onClick={() => setSelectedAgent(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors">
-                Save Changes
-              </button>
-            </div>
-          </>
         )}
       </div>
 
-      {/* Overlay for mobile/smaller screens when panel is open */}
-      {selectedAgent && (
-        <div
-          className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-10 lg:hidden"
-          onClick={() => setSelectedAgent(null)}
-        />
+      {/* Main Content (Grid) */}
+      <div className="flex-1 overflow-y-auto p-8">
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {agents.map(agent => (
+                <div key={agent.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-6 flex flex-col h-full">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-gray-100 p-2.5 rounded-lg border border-gray-200">
+                                <Code className="w-5 h-5 text-gray-600" />
+                            </div>
+                            <h3 className="font-semibold text-gray-900 text-lg">{agent.name}</h3>
+                        </div>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${agent.is_active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                            <CheckCircle className="w-3 h-3" />
+                            {agent.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                    </div>
+
+                    <p className="text-sm text-gray-600 flex-1 mb-6 leading-relaxed">
+                        {agent.description || 'No description provided.'}
+                    </p>
+
+                    <div className="mt-auto space-y-4">
+                        {agent.trigger_keywords && (
+                            <div>
+                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Triggers</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {agent.trigger_keywords.split(',').map((kw, i) => (
+                                        <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                            {kw.trim()}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div className="pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                            <div className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5" />
+                                {new Date(agent.created_at).toLocaleDateString()}
+                            </div>
+                            <span>ID: {agent.id}</span>
+                        </div>
+                    </div>
+                </div>
+            ))}
+         </div>
+      </div>
+
+      {/* Creation Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-gray-900/50 flex justify-end z-50">
+            <div className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <h2 className="text-lg font-semibold text-gray-900">Create New Agent</h2>
+                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-200">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                    <form id="agent-form" onSubmit={handleCreateAgent} className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
+                            <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="e.g., DataAnalyzer" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                            <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} rows={3} className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="What does this agent do?" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Trigger Keywords (Comma separated)</label>
+                            <input type="text" value={formData.trigger_keywords} onChange={e => setFormData({...formData, trigger_keywords: e.target.value})} className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="e.g., analyze, parse, report" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Input Schema Builder</label>
+                            <div className="space-y-3 bg-gray-50 p-4 rounded-md border border-gray-200">
+                                {schemaFields.map((field, index) => (
+                                    <div key={index} className="flex items-center gap-3">
+                                        <input
+                                            type="text"
+                                            placeholder="Key name"
+                                            value={field.key}
+                                            onChange={(e) => updateSchemaField(index, 'key', e.target.value)}
+                                            className="flex-1 border border-gray-300 rounded shadow-sm px-2 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                                        />
+                                        <select
+                                            value={field.type}
+                                            onChange={(e) => updateSchemaField(index, 'type', e.target.value)}
+                                            className="w-28 border border-gray-300 rounded shadow-sm px-2 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                        >
+                                            <option value="string">String</option>
+                                            <option value="number">Number</option>
+                                            <option value="boolean">Boolean</option>
+                                        </select>
+                                        <label className="flex items-center gap-1.5 text-sm text-gray-600">
+                                            <input
+                                                type="checkbox"
+                                                checked={field.required}
+                                                onChange={(e) => updateSchemaField(index, 'required', e.target.checked)}
+                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            Req
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => removeSchemaField(index)}
+                                            className="text-gray-400 hover:text-red-500 p-1"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={addSchemaField}
+                                    className="text-sm text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-700"
+                                >
+                                    <Plus className="w-4 h-4" /> Add Field
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-medium text-gray-700">Python Script</label>
+                                <span className="text-[10px] uppercase font-bold text-gray-400">Execution Context</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-2">Write standard Python. Variables <code className="bg-gray-100 px-1 rounded">params</code> (input dict) and <code className="bg-gray-100 px-1 rounded">output</code> (output dict) are pre-injected.</p>
+                            <textarea
+                                required
+                                value={formData.python_code}
+                                onChange={e => setFormData({...formData, python_code: e.target.value})}
+                                rows={12}
+                                className="w-full font-mono text-sm border border-gray-800 rounded-md shadow-inner px-4 py-3 bg-[#0D1117] text-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
+                                spellCheck="false"
+                            />
+                        </div>
+                    </form>
+                </div>
+
+                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
+                        Cancel
+                    </button>
+                    <button type="submit" form="agent-form" className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
+                        Save Agent
+                    </button>
+                </div>
+            </div>
+        </div>
       )}
+
     </div>
   );
 }

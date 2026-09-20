@@ -44,3 +44,14 @@ def send_message(session_id: int, request: ChatRequest, db: Session = Depends(ge
 
     result = route_and_execute(request.message, session_id, user, db)
     return result
+
+@chat_router.delete("/sessions/{session_id}")
+def delete_session(session_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Due to cascade, messages should be deleted or we can just delete the session
+    db.delete(session)
+    db.commit()
+    return {"status": "success", "message": "Session deleted"}

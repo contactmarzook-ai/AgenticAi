@@ -51,9 +51,9 @@ def require_admin(current_user: User = Depends(get_current_user)):
     return current_user
 
 @auth_router.get("/sso/microsoft")
-def mock_microsoft_sso(db: Session = Depends(get_db)):
+def mock_microsoft_sso(role: str = "admin", db: Session = Depends(get_db)):
     """
-    Mock SSO endpoint that seeds default users and returns an admin token for testing.
+    Mock SSO endpoint that seeds default users and returns a token for testing based on the requested role.
     In a real app, this would receive a callback code from Entra ID and exchange it.
     """
     # Seed Admin
@@ -72,10 +72,12 @@ def mock_microsoft_sso(db: Session = Depends(get_db)):
 
     db.commit()
 
-    # Generate token for the admin for testing purposes
+    # Generate token for the requested role for testing purposes
+    target_email = admin_email if role == "admin" else user_email
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": admin_email, "role": "admin"}, expires_delta=access_token_expires
+        data={"sub": target_email, "role": role}, expires_delta=access_token_expires
     )
 
     return {"access_token": access_token, "token_type": "bearer"}

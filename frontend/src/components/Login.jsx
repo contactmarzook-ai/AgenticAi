@@ -13,10 +13,7 @@ export default function Login() {
     setError(null);
     try {
       // For this phase, the SSO endpoint seeds an admin and a user based on the mock backend
-      const res = await api.get('/auth/sso/microsoft');
-      // In our mock, the endpoint returns an admin token.
-      // To simulate logging in as a standard user, we would need the backend to support it.
-      // For now, we will just use the token returned by the mock endpoint.
+      const res = await api.get(`/auth/sso/microsoft?role=${role}`);
       setToken(res.data.access_token);
     } catch (err) {
       setError("Authentication failed. Ensure the backend is running.");
