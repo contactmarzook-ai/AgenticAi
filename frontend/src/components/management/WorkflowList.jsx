@@ -51,7 +51,7 @@ export default function WorkflowList({ onOpenBuilder }) {
                                     </h3>
                                     <p className="text-gray-500 text-sm mt-1">{latest.description}</p>
                                 </div>
-                                <button onClick={onOpenBuilder} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+                                <button onClick={() => onOpenBuilder(latest.id)} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
                                     Edit Latest
                                 </button>
                             </div>
@@ -67,6 +67,9 @@ export default function WorkflowList({ onOpenBuilder }) {
                                                     {w.status}
                                                 </span>
                                             </div>
+                                            <button onClick={() => onOpenBuilder(w.id)} className="text-indigo-600 hover:text-indigo-800 text-xs font-medium">
+                                                {w.status === 'draft' ? 'Edit Draft' : 'View / Rollback'}
+                                            </button>
                                         </div>
                                     ))}
                                 </div>

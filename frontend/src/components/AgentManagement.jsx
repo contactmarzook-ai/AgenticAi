@@ -21,6 +21,7 @@ export default function AgentManagement() {
     is_active: true
   });
   const [schemaFields, setSchemaFields] = useState([{ key: '', type: 'string', required: false }]);
+  const [outputSchemaFields, setOutputSchemaFields] = useState([{ key: '', type: 'string', required: false }]);
 
   useEffect(() => {
     fetchAgents();
@@ -86,6 +87,13 @@ export default function AgentManagement() {
           }
         }
       });
+
+    const output_schema = {};
+    outputSchemaFields.forEach(field => {
+      if (field.key) {
+          output_schema[field.key] = { type: field.type, required: field.required };
+      }
+    });
 
       const payload = {
           ...formData,
@@ -257,6 +265,27 @@ export default function AgentManagement() {
                                     </div>
                                 ))}
                                 <button type="button" onClick={addSchemaField} className="text-sm text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-700"><Plus className="w-4 h-4" /> Add Field</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Output Schema Builder</label>
+                            <div className="space-y-3 bg-gray-50 p-4 rounded-md border border-gray-200">
+                                {outputSchemaFields.map((field, index) => (
+                                    <div key={index} className="flex items-center gap-3">
+                                        <input type="text" placeholder="Key name" value={field.key} onChange={(e) => updateOutputSchemaField(index, 'key', e.target.value)} className="flex-1 border border-gray-300 rounded shadow-sm px-2 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500" />
+                                        <select value={field.type} onChange={(e) => updateOutputSchemaField(index, 'type', e.target.value)} className="w-28 border border-gray-300 rounded shadow-sm px-2 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                                            <option value="string">String</option>
+                                            <option value="number">Number</option>
+                                            <option value="boolean">Boolean</option>
+                                        </select>
+                                        <label className="flex items-center gap-1.5 text-sm text-gray-600">
+                                            <input type="checkbox" checked={field.required} onChange={(e) => updateOutputSchemaField(index, 'required', e.target.checked)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                                            Req
+                                        </label>
+                                        <button type="button" onClick={() => removeOutputSchemaField(index)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={addOutputSchemaField} className="text-sm text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-700"><Plus className="w-4 h-4" /> Add Field</button>
                             </div>
                         </div>
                         <div>

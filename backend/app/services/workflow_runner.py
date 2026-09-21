@@ -41,7 +41,7 @@ def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any], initi
         return left < right if (left is not None and right is not None) else False
     return False
 
-def run_workflow_pipeline(workflow_id: int, initial_input: Dict[str, Any], db: Session) -> Dict[str, Any]:
+def run_workflow_pipeline(workflow_id: int, initial_input: Dict[str, Any], db: Session, is_test: bool = False) -> Dict[str, Any]:
     """
     Executes a node-based workflow graph.
     """
@@ -131,7 +131,7 @@ def run_workflow_pipeline(workflow_id: int, initial_input: Dict[str, Any], db: S
                 execution_history.append(step_record)
                 return {"status": "error", "error": step_record["error"], "history": execution_history}
 
-            result = execute_agent_script(agent.handler, node_inputs)
+            result = execute_agent_script(agent.handler, node_inputs, input_schema=agent.input_schema, output_schema=agent.output_schema)
 
             if result.get("status") == "error":
                  step_record["status"] = "error"
@@ -184,7 +184,7 @@ def run_workflow_pipeline(workflow_id: int, initial_input: Dict[str, Any], db: S
          if execution_history:
               final_output = execution_history[-1].get("output_produced", {})
 
-    if locals().get("is_test"):
+    if is_test:
         return {"status": "success", "is_test": True, "final_output": final_output, "history": execution_history}
 
     return {

@@ -7,6 +7,7 @@ import WorkflowList from './management/WorkflowList';
 
 export default function Management() {
   const [activeSubTab, setActiveSubTab] = useState('agents');
+  const [editingWorkflowId, setEditingWorkflowId] = useState(null);
 
   return (
     <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
@@ -59,8 +60,8 @@ export default function Management() {
 
       <div className="flex-1 overflow-hidden relative">
         {activeSubTab === 'agents' && <AgentManagement />}
-        {activeSubTab === 'workflows_list' && <WorkflowList onOpenBuilder={() => setActiveSubTab('workflows_builder')} />}
-        {activeSubTab === 'workflows_builder' && <WorkflowBuilder />}
+        {activeSubTab === 'workflows_list' && <WorkflowList onOpenBuilder={(id) => { setEditingWorkflowId(id || null); setActiveSubTab('workflows_builder'); }} />}
+        {activeSubTab === 'workflows_builder' && <WorkflowBuilder workflowId={editingWorkflowId} onBack={() => setActiveSubTab('workflows_list')} />}
         {activeSubTab === 'monitoring' && <Monitoring embedded={true} />}
       </div>
     </div>

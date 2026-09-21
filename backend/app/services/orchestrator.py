@@ -192,18 +192,23 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
 
         agent = db.query(Agent).filter(Agent.id == target_id).first()
         if agent:
-             exe_result = execute_agent_script(agent.handler, params)
+             exe_result = execute_agent_script(agent.handler, params, input_schema=agent.input_schema, output_schema=agent.output_schema)
              metadata["execution"] = exe_result
              final_response["execution_trace"] = exe_result
 
              if exe_result.get("status") == "success":
-                  final_response["message"] = f"Agent '{agent.name}' executed successfully."
+                  final_response["message"] = f"Action completed successfully."
+             elif "Missing required field" in exe_result.get("error", ""):
+                  final_response["status"] = "success"
+                  final_response["action"] = "clarify"
+                  missing = exe_result.get("error").split("Missing required field: ")[1].split("'")[1]
+                  final_response["message"] = f"I need a bit more information. Could you please provide the {missing}?"
              else:
                   final_response["status"] = "error"
-                  final_response["message"] = f"Agent '{agent.name}' execution failed: {exe_result.get('error')}"
+                  final_response["message"] = f"I encountered an issue processing that request. Please verify your inputs or try again."
         else:
              final_response["status"] = "error"
-             final_response["message"] = f"Agent with ID {target_id} not found."
+             final_response["message"] = f"I could not find the requested tool."
 
     elif action == "workflow":
         target_id = route_response.get("target_id")
@@ -216,13 +221,13 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
              final_response["execution_trace"] = exe_result
 
              if exe_result.get("status") == "success":
-                  final_response["message"] = f"Workflow '{wf.name}' executed successfully."
+                  final_response["message"] = f"Process completed successfully."
              else:
                   final_response["status"] = "error"
-                  final_response["message"] = f"Workflow '{wf.name}' execution failed."
+                  final_response["message"] = f"I encountered an issue processing that request. Please try again."
         else:
              final_response["status"] = "error"
-             final_response["message"] = f"Workflow with ID {target_id} not found."
+             final_response["message"] = f"I could not find the requested process."
     else:
         final_response["status"] = "error"
         final_response["message"] = f"Unknown action: {action}"

@@ -53,7 +53,7 @@ const nodeTypes = {
   )
 };
 
-export default function WorkflowBuilder() {
+export default function WorkflowBuilder({ workflowId, onBack }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -65,12 +65,33 @@ export default function WorkflowBuilder() {
   const [testResult, setTestResult] = useState(null);
   const [isTesting, setIsTesting] = useState(false);
   const [groupId, setGroupId] = useState(null);
-  const [currentWorkflowId, setCurrentWorkflowId] = useState(null);
+  const [currentWorkflowId, setCurrentWorkflowId] = useState(workflowId);
   const [testInput, setTestInput] = useState("{}");
 
   useEffect(() => {
     fetchAgents();
-  }, []);
+    if (workflowId) {
+        fetchWorkflow(workflowId);
+    }
+  }, [workflowId]);
+
+  const fetchWorkflow = async (id) => {
+      try {
+          const res = await api.get(`/workflows`);
+          const wf = res.data.find(w => w.id === id);
+          if (wf) {
+              setWorkflowName(wf.name);
+              setWorkflowDesc(wf.description);
+              setGroupId(wf.group_id);
+              if (wf.definition) {
+                  setNodes(wf.definition.nodes || []);
+                  setEdges(wf.definition.edges || []);
+              }
+          }
+      } catch (e) {
+          console.error(e);
+      }
+  };
 
   // Keep selected node state in sync when it's updated in the canvas
   useEffect(() => {
@@ -138,8 +159,19 @@ export default function WorkflowBuilder() {
         setTimeout(() => setTestResult(null), 3000);
     } catch (err) {
         console.error(err);
-        setTestResult({status: 'error', message: 'Failed to save workflow.'});
-        setTimeout(() => setTestResult(null), 3000);
+        let errorMsg = 'Failed to save workflow.';
+        if (err.response?.data?.detail) {
+            const detail = err.response.data.detail;
+            if (typeof detail === 'string') {
+                errorMsg = detail;
+            } else if (Array.isArray(detail)) {
+                errorMsg = detail.map(d => d.msg || JSON.stringify(d)).join(', ');
+            } else if (detail.message) {
+                errorMsg = detail.message;
+            }
+        }
+        setTestResult({status: 'error', message: errorMsg});
+        setTimeout(() => setTestResult(null), 5000);
     }
   };
 
@@ -347,6 +379,11 @@ export default function WorkflowBuilder() {
 
       {/* Left Sidebar - Node Palette & Info */}
       <div className="w-64 bg-white border-r border-gray-200 flex flex-col z-10 shadow-sm">
+        <div className="p-3 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
+            <button onClick={onBack} className="text-gray-500 hover:text-indigo-600 font-medium text-sm">
+                &larr; Back
+            </button>
+        </div>
         <div className="p-4 border-b border-gray-200 bg-gray-50">
             <input
                 type="text"
