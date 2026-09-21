@@ -6,17 +6,7 @@ import { useAuthStore } from '../store/authStore';
 export default function Agents() {
   const [agents, setAgents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const user = useAuthStore((state) => state.user);
-
-  // Form State
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    trigger_keywords: '',
-    handler: 'default_handler',
-  });
-  const [schemaFields, setSchemaFields] = useState([{ key: '', type: 'string', required: false }]);
 
   useEffect(() => {
     fetchAgents();
@@ -33,52 +23,6 @@ export default function Agents() {
     }
   };
 
-  const handleCreateAgent = async (e) => {
-    e.preventDefault();
-    try {
-      const schemaObj = {
-        type: "object",
-        properties: {},
-        required: []
-      };
-
-      schemaFields.forEach(field => {
-        if (field.key) {
-          schemaObj.properties[field.key] = { type: field.type };
-          if (field.required) {
-            schemaObj.required.push(field.key);
-          }
-        }
-      });
-
-      await api.post('/agents', {
-          ...formData,
-          input_schema: schemaObj,
-          is_active: true
-      });
-      setIsModalOpen(false);
-      fetchAgents();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to create agent");
-    }
-  };
-
-  const addSchemaField = () => {
-    setSchemaFields([...schemaFields, { key: '', type: 'string', required: false }]);
-  };
-
-  const updateSchemaField = (index, field, value) => {
-    const newFields = [...schemaFields];
-    newFields[index][field] = value;
-    setSchemaFields(newFields);
-  };
-
-  const removeSchemaField = (index) => {
-    const newFields = schemaFields.filter((_, i) => i !== index);
-    setSchemaFields(newFields);
-  };
-
   return (
     <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
 
@@ -89,18 +33,10 @@ export default function Agents() {
             <Bot className="w-6 h-6 text-indigo-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Agents</h1>
-            <p className="text-sm text-gray-500 mt-1">Manage AI agents and their execution scripts</p>
+            <h1 className="text-2xl font-semibold text-gray-900">Agents Discoverability</h1>
+            <p className="text-sm text-gray-500 mt-1">Discover available AI agents on the platform.</p>
           </div>
         </div>
-        {user?.role === 'admin' && (
-            <button
-                onClick={() => setIsModalOpen(true)}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm transition-colors text-sm font-medium"
-            >
-                <Plus className="w-4 h-4" /> Create Agent
-            </button>
-        )}
       </div>
 
       {/* Main Content (Grid) */}
@@ -150,111 +86,6 @@ export default function Agents() {
             ))}
          </div>
       </div>
-
-      {/* Creation Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-900/50 flex justify-end z-50">
-            <div className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-                    <h2 className="text-lg font-semibold text-gray-900">Create New Agent</h2>
-                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-200">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6">
-                    <form id="agent-form" onSubmit={handleCreateAgent} className="space-y-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
-                            <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="e.g., DataAnalyzer" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                            <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} rows={3} className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="What does this agent do?" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Trigger Keywords (Comma separated)</label>
-                            <input type="text" value={formData.trigger_keywords} onChange={e => setFormData({...formData, trigger_keywords: e.target.value})} className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="e.g., analyze, parse, report" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Input Schema Builder</label>
-                            <div className="space-y-3 bg-gray-50 p-4 rounded-md border border-gray-200">
-                                {schemaFields.map((field, index) => (
-                                    <div key={index} className="flex items-center gap-3">
-                                        <input
-                                            type="text"
-                                            placeholder="Key name"
-                                            value={field.key}
-                                            onChange={(e) => updateSchemaField(index, 'key', e.target.value)}
-                                            className="flex-1 border border-gray-300 rounded shadow-sm px-2 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                                        />
-                                        <select
-                                            value={field.type}
-                                            onChange={(e) => updateSchemaField(index, 'type', e.target.value)}
-                                            className="w-28 border border-gray-300 rounded shadow-sm px-2 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                                        >
-                                            <option value="string">String</option>
-                                            <option value="number">Number</option>
-                                            <option value="boolean">Boolean</option>
-                                        </select>
-                                        <label className="flex items-center gap-1.5 text-sm text-gray-600">
-                                            <input
-                                                type="checkbox"
-                                                checked={field.required}
-                                                onChange={(e) => updateSchemaField(index, 'required', e.target.checked)}
-                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                            Req
-                                        </label>
-                                        <button
-                                            type="button"
-                                            onClick={() => removeSchemaField(index)}
-                                            className="text-gray-400 hover:text-red-500 p-1"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))}
-                                <button
-                                    type="button"
-                                    onClick={addSchemaField}
-                                    className="text-sm text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-700"
-                                >
-                                    <Plus className="w-4 h-4" /> Add Field
-                                </button>
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex justify-between items-center mb-1">
-                                <label className="block text-sm font-medium text-gray-700">Agent Handler</label>
-                                <span className="text-[10px] uppercase font-bold text-gray-400">Registry Binding</span>
-                            </div>
-                            <p className="text-xs text-gray-500 mb-2">Select the registered python function that powers this agent.</p>
-                            <select
-                                required
-                                value={formData.handler}
-                                onChange={e => setFormData({...formData, handler: e.target.value})}
-                                className="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
-                            >
-                                <option value="mock_noc_generator">mock_noc_generator</option>
-                                <option value="mock_data_analyzer">mock_data_analyzer</option>
-                                <option value="default_handler">default_handler</option>
-                            </select>
-                        </div>
-                    </form>
-                </div>
-
-                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm">
-                        Cancel
-                    </button>
-                    <button type="submit" form="agent-form" className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">
-                        Save Agent
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
 
     </div>
   );

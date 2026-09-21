@@ -5,6 +5,7 @@ import Chat from './components/Chat';
 import Agents from './components/Agents';
 import Workflows from './components/Workflows';
 import Users from './components/Users';
+import Management from './components/Management';
 import Login from './components/Login';
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
         {activeTab === 'agents' && <Agents />}
         {activeTab === 'workflows' && <Workflows />}
         {activeTab === 'users' && <Users />}
+        {activeTab === 'management' && <Management />}
       </main>
     </div>
   );

@@ -1,5 +1,6 @@
 import json
 import requests
+import time
 from typing import Dict, Any, Tuple, Optional
 from sqlalchemy.orm import Session
 
@@ -136,11 +137,17 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
     route_response = fast_path_route(user_input, db)
 
     # 3. LLM Fallback (if fast path fails)
+    llm_duration_sec = 0.0
     if not route_response:
         system_prompt = build_dynamic_prompt(db)
         full_prompt = f"{system_prompt}\n\nUser Request: {user_input}"
+
+        llm_start = time.time()
         route_response = call_llama(full_prompt)
+        llm_duration_sec = time.time() - llm_start
+
         route_response["routing_method"] = "llm"
+        route_response["llm_duration_sec"] = llm_duration_sec
 
     action = route_response.get("action")
 
@@ -157,7 +164,9 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
 
     # 4. Route Execution
     confidence = route_response.get("confidence_score", 1.0)
+    agent_duration_sec = 0.0
 
+    agent_start = time.time()
     if action == "error":
         final_response["status"] = "error"
         final_response["message"] = route_response.get("message", "An unknown error occurred.")
@@ -209,6 +218,13 @@ def route_and_execute(user_input: str, session_id: int, user: User, db: Session)
     else:
         final_response["status"] = "error"
         final_response["message"] = f"Unknown action: {action}"
+
+    agent_duration_sec = time.time() - agent_start
+    metadata["timing"] = {
+        "llm_duration_sec": llm_duration_sec,
+        "agent_duration_sec": agent_duration_sec,
+        "total_duration_sec": llm_duration_sec + agent_duration_sec
+    }
 
     # 4. Save Assistant message
     asst_msg = ChatMessage(

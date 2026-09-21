@@ -3,8 +3,11 @@
 > vite
 
 
-  VITE v8.3.0  ready in 260 ms
+  VITE v8.3.0  ready in 512 ms
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
-Killed
+12:08:54 AM [vite] (client) hmr update /src/index.css, /src/components/Chat.jsx
+12:09:01 AM [vite] (client) hmr update /src/index.css, /src/components/Chat.jsx
+12:09:12 AM [vite] (client) hmr update /src/index.css, /src/components/Chat.jsx
+12:09:22 AM [vite] (client) hmr update /src/index.css, /src/components/Monitoring.jsx

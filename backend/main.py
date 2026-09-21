@@ -7,6 +7,7 @@ from app.routers.chat import chat_router
 from app.routers.agents import agents_router
 from app.routers.workflows import workflows_router
 from app.routers.admin import admin_router
+from app.routers.monitoring import monitoring_router
 
 # Initialize database
 Base.metadata.create_all(bind=engine)
@@ -19,6 +20,7 @@ app.include_router(chat_router)
 app.include_router(agents_router)
 app.include_router(workflows_router)
 app.include_router(admin_router)
+app.include_router(monitoring_router)
 
 # Allow requests from frontend
 app.add_middleware(
