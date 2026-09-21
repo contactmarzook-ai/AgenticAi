@@ -1,50 +1,32 @@
 import traceback
 from typing import Dict, Any
+from app.agents.registry import get_handler
 
-def execute_agent_script(python_code: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def execute_agent_script(handler_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Dynamically executes a Python script.
-
-    The script must define a variable `output` which will be returned as the result.
-    The script will have access to the `params` dictionary in its execution context.
+    Executes an agent by finding its registered handler function.
 
     Args:
-        python_code: The raw python string to execute.
-        params: A dictionary of parameters to feed into the script context.
+        handler_name: The name of the registered python function.
+        params: A dictionary of parameters to feed into the handler.
 
     Returns:
-        A dictionary containing the state of the `output` variable after execution.
+        A dictionary containing the output of the handler.
         If an error occurs, it returns an error dictionary with the traceback.
     """
-    # Restrict builtins to prevent highly dangerous operations (RCE)
-    # Provide only safe builtins
-    safe_builtins = {
-        "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict,
-        "enumerate": enumerate, "float": float, "int": int, "len": len,
-        "list": list, "map": map, "max": max, "min": min, "set": set,
-        "str": str, "sum": sum, "tuple": tuple, "zip": zip,
-        "ValueError": ValueError, "TypeError": TypeError, "Exception": Exception
-    }
-    exec_globals = {
-        "__builtins__": safe_builtins
-    }
+    handler = get_handler(handler_name)
 
-    # We pass the input params directly into the local namespace,
-    # and we expect the script to populate 'output'.
-    exec_locals = {
-        "params": params,
-        "output": {}
-    }
+    if not handler:
+        return {
+            "status": "error",
+            "error": f"Handler '{handler_name}' not found in registry."
+        }
 
     try:
-        # Execute the code dynamically
-        exec(python_code, exec_globals, exec_locals)
-
-        # Extract the resulting output
-        result = exec_locals.get("output", {})
+        result = handler(params)
 
         if not isinstance(result, dict):
-            return {"status": "error", "error": "Script did not produce a dictionary in the 'output' variable."}
+            return {"status": "error", "error": "Handler did not produce a dictionary."}
 
         return result
 

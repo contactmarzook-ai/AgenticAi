@@ -76,10 +76,10 @@ def test_run_workflow_pipeline(db_session):
     assert len(history) == 2
 
     # Agent 1 history checks
-    assert history[0]["node_type"] == "agent"
-    assert "input_used" in history[0]
+    assert history[0]["agent_name"] == "DataAnalyzer"
+    assert history[0]["input_used"] == initial_input
     assert history[0]["output_produced"]["status"] == "success"
 
     # Agent 2 history checks
-    assert history[1]["node_type"] == "agent"
+    assert history[1]["agent_name"] == "NOCGenerator"
     assert history[1]["output_produced"]["status"] == "success"

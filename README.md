@@ -1,16 +1,26 @@
-# React + Vite
+# AgentOS
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+AgentOS is an enterprise AI Workflow Orchestrator designed to map user requests to a set of registered AI agents and execute chained workflows.
 
-Currently, two official plugins are available:
+## Architecture & Security Model
+The system uses a **trusted handler architecture**.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### The Agent Registry
+Agents are defined as standard Python functions in `backend/app/agents/handlers.py` and are registered in `backend/app/agents/registry.py`.
 
-## React Compiler
+The database model (`Agent`) stores metadata, descriptions, trigger keywords, and the name of the `handler` function to use, but **never raw Python code**. This prevents Remote Code Execution (RCE) vulnerabilities and ensures that the LLM orchestrator only selects from a pre-vetted list of operations.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Fast-Path & Lightweight Routing Orchestrator
+The Orchestrator (`backend/app/services/orchestrator.py`) handles incoming user requests using a dual-path routing model to keep inference times and CPU/GPU usage low:
+1. **Fast-Path:** The system first attempts to route requests directly by matching keywords and agent names without calling the LLM. If a confident match is found, it proceeds immediately to execution.
+2. **LLM Fallback:** If the fast-path fails, it queries the local LLM model (via Ollama/Llama) with a dynamic prompt containing available agents and workflows.
+3. The LLM acts strictly as a **router**, identifying the best tool to use, extracting required parameters, and calculating a `confidence_score`. It explicitly avoids deep reasoning or generating multi-step plans.
+4. If the LLM `confidence_score` is below `0.7`, the system falls back to asking the user for clarification.
+5. If a tool is confidently identified (via fast-path or LLM), the Orchestrator calls the Execution Engine (`backend/app/services/executor.py`) or Workflow Runner, which looks up the registered handler function by name and executes it with the provided parameters.
 
-## Expanding the Oxlint configuration
+This architecture ensures extremely fast routing for common tasks, smart fallback for complex requests, and preserves the ability to plug in a separate Dynamic Planner layer in the future without rewriting the core router.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Local Development
+1. **Frontend:** React + Vite + Tailwind CSS. `cd frontend && npm install && npm run dev`
+2. **Backend:** FastAPI + SQLAlchemy. `cd backend && pip install -r requirements.txt && uvicorn main:app --reload`
+3. **Database:** SQLite (in-memory for tests, file-based for local dev).

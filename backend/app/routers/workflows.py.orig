@@ -19,9 +19,8 @@ def create_workflow(workflow_data: WorkflowCreate, db: Session = Depends(get_db)
     new_workflow = Workflow(
         name=workflow_data.name,
         description=workflow_data.description,
-        definition=workflow_data.definition,
-        is_active=workflow_data.is_active,
-        user_id=user.id if user else None
+        steps_json=workflow_data.steps_json,
+        user_id=user.id
     )
     db.add(new_workflow)
     db.commit()

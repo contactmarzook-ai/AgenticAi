@@ -1,0 +1,42 @@
+--- backend/app/services/orchestrator.py
++++ backend/app/services/orchestrator.py
+@@ -53,24 +53,29 @@
+     user_input_lower = user_input.lower().strip()
+     agents = db.query(Agent).filter(Agent.is_active == True).all()
++    workflows = db.query(Workflow).filter(Workflow.is_active == True).all()
+
+     best_match = None
++    match_type = None
+
+     for agent in agents:
+         # Check exact name match
+         if agent.name.lower() in user_input_lower:
+             best_match = agent
++            match_type = "agent"
+             break
+
+         # Check trigger keywords
+         if agent.trigger_keywords:
+             keywords = [k.strip().lower() for k in agent.trigger_keywords.split(',')]
+             if any(kw in user_input_lower for kw in keywords):
+                 best_match = agent
++                match_type = "agent"
+                 break
+
++    if not best_match:
++        for wf in workflows:
++            if wf.name.lower() in user_input_lower:
++                best_match = wf
++                match_type = "workflow"
++                break
++
+     if best_match:
+-        # For fast path, we might not extract parameters perfectly,
+-        # but for simple requests without params, it's sufficient.
+-        # If the agent requires parameters according to schema, we might still want to use LLM.
+-        # But for this simple fast-path, we just pass what we have.
+         return {
+-            "action": "agent",
++            "action": match_type,
+             "target_id": best_match.id,
+             "parameters": {"raw_input": user_input},

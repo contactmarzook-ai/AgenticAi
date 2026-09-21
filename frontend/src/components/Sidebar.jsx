@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MessageSquare, Bot, Settings, Hexagon, Plus, Users, Workflow, LogOut, Trash2 } from 'lucide-react';
+import { MessageSquare, Bot, Settings, Hexagon, Plus, Users, Workflow, LogOut, Trash2, ShieldCog } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import api from '../store/api';
 
@@ -37,9 +37,11 @@ export default function Sidebar({ activeTab, setActiveTab, activeSessionId, setA
 
   const tabs = [
     { id: 'chat', label: 'Chat', icon: MessageSquare },
-    { id: 'agents', label: 'Agents', icon: Bot, badge: user?.role === 'user' ? 'Read Only' : null },
-    { id: 'workflows', label: 'Workflows', icon: Workflow },
-    ...(user?.role === 'admin' ? [{ id: 'users', label: 'User Management', icon: Users }] : []),
+    { id: 'agents', label: 'Agents', icon: Bot, badge: 'Read Only' },
+    ...(user?.role === 'admin' ? [
+        { id: 'management', label: 'Management', icon: ShieldCog },
+        { id: 'users', label: 'User Management', icon: Users }
+    ] : []),
   ];
 
   const handleNewChat = () => {

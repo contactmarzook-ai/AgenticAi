@@ -3,9 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from typing import Dict, Any
 from app.auth import get_current_user, require_admin
 from app.models import User, Agent
 from app.schemas import AgentSchema, AgentCreate
+from app.services.executor import execute_agent_script
 
 agents_router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -21,7 +23,7 @@ def create_agent(agent_data: AgentCreate, db: Session = Depends(get_db), admin: 
         name=agent_data.name,
         description=agent_data.description,
         trigger_keywords=agent_data.trigger_keywords,
-        python_code=agent_data.python_code,
+        handler=agent_data.handler,
         input_schema=agent_data.input_schema,
         is_active=agent_data.is_active,
         created_by=admin.id
@@ -54,3 +56,12 @@ def delete_agent(agent_id: int, db: Session = Depends(get_db), admin: User = Dep
     agent.is_active = False
     db.commit()
     return {"message": "Agent deactivated successfully"}
+
+@agents_router.post("/{agent_id}/test")
+def test_agent(agent_id: int, payload: Dict[str, Any], db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    result = execute_agent_script(agent.handler, payload)
+    return result
