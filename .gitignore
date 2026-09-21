@@ -3,3 +3,10 @@ frontend/dist/
 backend/__pycache__/
 backend/*.pyc
 .env
+frontend/dist
+verification/
+*.pyc
+__pycache__/
+*.patch
+*.orig
+*.rej

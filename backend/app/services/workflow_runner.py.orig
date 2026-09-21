@@ -184,7 +184,7 @@ def run_workflow_pipeline(workflow_id: int, initial_input: Dict[str, Any], db: S
          if execution_history:
               final_output = execution_history[-1].get("output_produced", {})
 
-    if locals().get("is_test"):
+    if is_test:
         return {"status": "success", "is_test": True, "final_output": final_output, "history": execution_history}
 
     return {

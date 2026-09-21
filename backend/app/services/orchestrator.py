@@ -28,7 +28,8 @@ def build_dynamic_prompt(db: Session) -> str:
         tools_desc.append(desc)
 
     # Format Workflows
-    for wf in workflows:
+    active_workflows = db.query(Workflow).filter(Workflow.is_active == True).all()
+    for wf in active_workflows:
          desc = f"- TYPE: workflow | ID: {wf.id} | NAME: {wf.name} | DESC: {wf.description}"
          tools_desc.append(desc)
 
