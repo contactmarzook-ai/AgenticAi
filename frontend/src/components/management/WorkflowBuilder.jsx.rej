@@ -1,0 +1,11 @@
+--- WorkflowBuilder.jsx
++++ WorkflowBuilder.jsx
+@@ -10,7 +10,7 @@
+   Position
+ } from '@xyflow/react';
+ import '@xyflow/react/dist/style.css';
+-import { Plus, Settings2, Play, Save, CheckCircle, XCircle } from 'lucide-react';
++import { Plus, Settings2, Play, Save, CheckCircle, XCircle, Zap } from 'lucide-react';
+ import api from '../../store/api';
+
+ const nodeTypes = {

@@ -3,6 +3,7 @@ from typing import Optional, List
 from sqlalchemy import String, Integer, Boolean, ForeignKey, Text, JSON, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
+import uuid
 
 def utcnow():
     return datetime.now(timezone.utc)
@@ -56,6 +57,7 @@ class Agent(Base):
     trigger_keywords: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     handler: Mapped[str] = mapped_column(String)
     input_schema: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    output_schema: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -67,6 +69,9 @@ class Workflow(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    group_id: Mapped[str] = mapped_column(String, index=True, default=lambda: uuid.uuid4().hex)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String, default="draft") # draft, active, archived
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     definition: Mapped[dict] = mapped_column(JSON, default=dict) # Stores nodes, edges, context
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

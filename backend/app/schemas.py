@@ -56,6 +56,7 @@ class AgentBase(BaseModel):
     trigger_keywords: Optional[str] = None
     handler: str
     input_schema: Optional[Dict[str, Any]] = None
+    output_schema: Optional[Dict[str, Any]] = None
     is_active: bool = True
 
 class AgentCreate(AgentBase):
@@ -72,8 +73,11 @@ class AgentSchema(AgentBase):
 class WorkflowBase(BaseModel):
     name: str
     description: Optional[str] = None
+    group_id: Optional[str] = None
     definition: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
+    status: str = "draft"
+    version: int = 1
 
 class WorkflowCreate(WorkflowBase):
     pass
