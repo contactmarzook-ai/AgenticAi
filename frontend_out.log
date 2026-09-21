@@ -11,3 +11,11 @@
 12:09:01 AM [vite] (client) hmr update /src/index.css, /src/components/Chat.jsx
 12:09:12 AM [vite] (client) hmr update /src/index.css, /src/components/Chat.jsx
 12:09:22 AM [vite] (client) hmr update /src/index.css, /src/components/Monitoring.jsx
+3:44:07 AM [vite] (client) hmr update /src/index.css, /src/components/Management.jsx
+3:55:55 AM [vite] (client) [optimizer] bundling dependencies...
+3:55:56 AM [vite] (client) dependency optimized: @xyflow/react
+3:55:56 AM [vite] (client) optimized dependencies changed. reloading
+4:08:56 AM [vite] (client) hmr update /src/index.css, /src/components/Workflows.jsx
+4:11:21 AM [vite] (client) hmr update /src/index.css, /src/components/management/WorkflowBuilder.jsx
+4:13:37 AM [vite] (client) hmr update /src/App.jsx, /src/index.css
+4:16:15 AM [vite] (client) hmr update /src/index.css, /src/components/Sidebar.jsx

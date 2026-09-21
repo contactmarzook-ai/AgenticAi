@@ -72,8 +72,7 @@ class AgentSchema(AgentBase):
 class WorkflowBase(BaseModel):
     name: str
     description: Optional[str] = None
-    definition: Dict[str, Any] = Field(default_factory=dict)
-    is_active: bool = True
+    steps_json: List[int] = Field(default_factory=list) # List of Agent IDs
 
 class WorkflowCreate(WorkflowBase):
     pass

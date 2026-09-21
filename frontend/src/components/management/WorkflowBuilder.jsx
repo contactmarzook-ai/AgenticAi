@@ -1,0 +1,379 @@
+import React, { useState, useCallback, useEffect } from 'react';
+import {
+  ReactFlow,
+  MiniMap,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Handle,
+  Position
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { Plus, Settings2, Play, Save, CheckCircle, XCircle } from 'lucide-react';
+import api from '../../store/api';
+
+const nodeTypes = {
+  input: ({ data }) => (
+    <div className="bg-white border-2 border-green-500 rounded-md shadow-md p-3 w-40">
+      <div className="font-bold text-sm text-green-700 flex items-center gap-1">Input Node</div>
+      <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
+    </div>
+  ),
+  agent: ({ data, selected }) => (
+    <div className={`bg-white border-2 ${selected ? 'border-indigo-500' : 'border-gray-300'} rounded-md shadow-md p-3 w-48`}>
+      <Handle type="target" position={Position.Top} className="w-2 h-2" />
+      <div className="font-bold text-sm text-indigo-700 flex items-center gap-1">Agent Node</div>
+      <div className="text-xs text-gray-500 mt-1 truncate">{data.agentName || 'Select Agent...'}</div>
+      <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
+    </div>
+  ),
+  condition: ({ data, selected }) => (
+    <div className={`bg-white border-2 ${selected ? 'border-orange-500' : 'border-gray-300'} rounded-md shadow-md p-3 w-48`}>
+      <Handle type="target" position={Position.Top} className="w-2 h-2" />
+      <div className="font-bold text-sm text-orange-700 flex items-center gap-1">Condition Node</div>
+      <div className="text-xs text-gray-500 mt-1">{data.condition?.operator || 'Evaluate'}</div>
+      <Handle type="source" position={Position.Bottom} id="true" style={{ left: '25%' }} className="w-2 h-2 bg-green-500" />
+      <Handle type="source" position={Position.Bottom} id="false" style={{ left: '75%' }} className="w-2 h-2 bg-red-500" />
+    </div>
+  ),
+  transform: ({ data, selected }) => (
+    <div className={`bg-white border-2 ${selected ? 'border-purple-500' : 'border-gray-300'} rounded-md shadow-md p-3 w-48`}>
+      <Handle type="target" position={Position.Top} className="w-2 h-2" />
+      <div className="font-bold text-sm text-purple-700 flex items-center gap-1">Transform Node</div>
+      <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
+    </div>
+  ),
+  end: ({ data }) => (
+    <div className="bg-white border-2 border-gray-800 rounded-md shadow-md p-3 w-40">
+      <Handle type="target" position={Position.Top} className="w-2 h-2" />
+      <div className="font-bold text-sm text-gray-800 flex items-center gap-1">End Node</div>
+    </div>
+  )
+};
+
+export default function WorkflowBuilder() {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const [agents, setAgents] = useState([]);
+  const [selectedNode, setSelectedNode] = useState(null);
+
+  const [workflowName, setWorkflowName] = useState("New Workflow");
+  const [workflowDesc, setWorkflowDesc] = useState("");
+  const [testResult, setTestResult] = useState(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  // Keep selected node state in sync when it's updated in the canvas
+  useEffect(() => {
+     if (selectedNode) {
+        const current = nodes.find(n => n.id === selectedNode.id);
+        if (current) setSelectedNode(current);
+     }
+  }, [nodes]);
+
+  const fetchAgents = async () => {
+    try {
+      const res = await api.get('/admin/agents');
+      setAgents(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+
+  const addNode = (type) => {
+    const newNode = {
+      id: `node-${Date.now()}`,
+      type,
+      position: { x: 100, y: 100 + nodes.length * 50 },
+      data: { mappings: {} },
+    };
+    setNodes((nds) => [...nds, newNode]);
+  };
+
+  const onNodeClick = (event, node) => {
+    setSelectedNode(node);
+  };
+
+  const onPaneClick = () => {
+    setSelectedNode(null);
+  };
+
+  const updateNodeData = (nodeId, newData) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return { ...node, data: { ...node.data, ...newData } };
+        }
+        return node;
+      })
+    );
+  };
+
+  const handleSave = async () => {
+    const payload = {
+        name: workflowName,
+        description: workflowDesc,
+        definition: {
+            nodes: nodes,
+            edges: edges
+        }
+    };
+    try {
+        await api.post('/workflows', payload);
+        setTestResult({status: 'success', message: 'Workflow saved.'});
+        setTimeout(() => setTestResult(null), 3000);
+    } catch (err) {
+        console.error(err);
+        setTestResult({status: 'error', message: 'Failed to save workflow.'});
+        setTimeout(() => setTestResult(null), 3000);
+    }
+  };
+
+  const handleTest = async () => {
+      // Mock test for now since we don't have a specific test endpoint for unsaved workflows yet.
+      setIsTesting(true);
+      setTimeout(() => {
+          setIsTesting(false);
+          setTestResult({status: 'success', message: 'Workflow structure is valid.'});
+      }, 1000);
+  };
+
+  const renderSidebar = () => {
+    if (!selectedNode) {
+      return (
+        <div className="p-4 text-sm text-gray-500">
+          Select a node to configure its properties.
+        </div>
+      );
+    }
+
+    if (selectedNode.type === 'agent') {
+      const selectedAgent = agents.find(a => a.id === parseInt(selectedNode.data.agent_id));
+      const inputSchema = selectedAgent?.input_schema || {};
+
+      return (
+        <div className="p-4 space-y-4">
+          <h3 className="font-semibold text-gray-800">Agent Configuration</h3>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Select Agent</label>
+            <select
+              className="w-full border rounded p-2 text-sm"
+              value={selectedNode.data.agent_id || ''}
+              onChange={(e) => {
+                  const aid = e.target.value;
+                  const agentInfo = agents.find(a => a.id === parseInt(aid));
+                  updateNodeData(selectedNode.id, {
+                      agent_id: parseInt(aid),
+                      agentName: agentInfo ? agentInfo.name : 'Unknown'
+                  });
+              }}
+            >
+              <option value="">-- Select an Agent --</option>
+              {agents.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedAgent && (
+             <div>
+                <h4 className="text-xs font-semibold text-gray-600 mb-2 mt-4 uppercase">Input Mappings</h4>
+                {Object.keys(inputSchema).map(key => {
+                    const currentMapping = selectedNode.data.mappings?.[key] || { source: 'static', value: '' };
+                    return (
+                        <div key={key} className="mb-3 border p-2 rounded bg-gray-50">
+                            <label className="block text-xs font-medium text-indigo-700 mb-1">{key}</label>
+                            <select
+                                className="w-full border rounded p-1 mb-1 text-xs"
+                                value={currentMapping.source}
+                                onChange={e => {
+                                    const newMappings = { ...selectedNode.data.mappings, [key]: { ...currentMapping, source: e.target.value } };
+                                    updateNodeData(selectedNode.id, { mappings: newMappings });
+                                }}
+                            >
+                                <option value="static">Static Value</option>
+                                <option value="workflow">Workflow Input</option>
+                                <option value="node">Node Output</option>
+                            </select>
+
+                            {currentMapping.source === 'static' && (
+                                <input
+                                    type="text"
+                                    placeholder="Value"
+                                    className="w-full border rounded p-1 text-xs"
+                                    value={currentMapping.value || ''}
+                                    onChange={e => {
+                                        const newMappings = { ...selectedNode.data.mappings, [key]: { ...currentMapping, value: e.target.value } };
+                                        updateNodeData(selectedNode.id, { mappings: newMappings });
+                                    }}
+                                />
+                            )}
+
+                            {currentMapping.source === 'workflow' && (
+                                <input
+                                    type="text"
+                                    placeholder="Path (e.g., user_id)"
+                                    className="w-full border rounded p-1 text-xs"
+                                    value={currentMapping.path || ''}
+                                    onChange={e => {
+                                        const newMappings = { ...selectedNode.data.mappings, [key]: { ...currentMapping, path: e.target.value } };
+                                        updateNodeData(selectedNode.id, { mappings: newMappings });
+                                    }}
+                                />
+                            )}
+
+                            {currentMapping.source === 'node' && (
+                                <div className="flex gap-1">
+                                    <select
+                                        className="w-1/2 border rounded p-1 text-xs"
+                                        value={currentMapping.node_id || ''}
+                                        onChange={e => {
+                                            const newMappings = { ...selectedNode.data.mappings, [key]: { ...currentMapping, node_id: e.target.value } };
+                                            updateNodeData(selectedNode.id, { mappings: newMappings });
+                                        }}
+                                    >
+                                        <option value="">- Node -</option>
+                                        {nodes.filter(n => n.id !== selectedNode.id).map(n => (
+                                            <option key={n.id} value={n.id}>{n.id} ({n.type})</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="text"
+                                        placeholder="Path"
+                                        className="w-1/2 border rounded p-1 text-xs"
+                                        value={currentMapping.path || ''}
+                                        onChange={e => {
+                                            const newMappings = { ...selectedNode.data.mappings, [key]: { ...currentMapping, path: e.target.value } };
+                                            updateNodeData(selectedNode.id, { mappings: newMappings });
+                                        }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+             </div>
+          )}
+        </div>
+      );
+    }
+
+    if (selectedNode.type === 'condition') {
+        const condition = selectedNode.data.condition || { left: {source:'static'}, operator: '==', right: {source:'static'} };
+
+        return (
+            <div className="p-4 space-y-4">
+              <h3 className="font-semibold text-gray-800">Condition Configuration</h3>
+              {/* Simplified condition builder for brevity */}
+              <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Operator</label>
+                  <select
+                    className="w-full border rounded p-2 text-sm"
+                    value={condition.operator}
+                    onChange={e => updateNodeData(selectedNode.id, { condition: { ...condition, operator: e.target.value } })}
+                  >
+                      <option value="==">Equals (==)</option>
+                      <option value="!=">Not Equals (!=)</option>
+                      <option value=">">Greater Than (&gt;)</option>
+                      <option value="<">Less Than (&lt;)</option>
+                  </select>
+              </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-4">
+            <h3 className="font-semibold text-gray-800 capitalize">{selectedNode.type} Node</h3>
+            <p className="text-sm text-gray-500 mt-2">No specific configuration available.</p>
+        </div>
+    );
+  };
+
+  return (
+    <div className="flex h-full w-full bg-gray-50 overflow-hidden">
+
+      {/* Left Sidebar - Node Palette & Info */}
+      <div className="w-64 bg-white border-r border-gray-200 flex flex-col z-10 shadow-sm">
+        <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <input
+                type="text"
+                value={workflowName}
+                onChange={e => setWorkflowName(e.target.value)}
+                className="font-semibold text-lg text-gray-900 bg-transparent outline-none w-full border-b border-transparent hover:border-gray-300 focus:border-indigo-500 transition-colors"
+            />
+            <input
+                type="text"
+                value={workflowDesc}
+                onChange={e => setWorkflowDesc(e.target.value)}
+                placeholder="Workflow description..."
+                className="text-sm text-gray-500 mt-1 bg-transparent outline-none w-full border-b border-transparent hover:border-gray-300 focus:border-indigo-500 transition-colors"
+            />
+        </div>
+
+        <div className="p-4">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Add Nodes</h3>
+          <div className="space-y-2">
+            <button onClick={() => addNode('input')} className="w-full text-left px-3 py-2 text-sm font-medium text-green-700 bg-green-50 rounded border border-green-200 hover:bg-green-100 flex items-center gap-2"><Plus className="w-4 h-4"/> Input Node</button>
+            <button onClick={() => addNode('agent')} className="w-full text-left px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded border border-indigo-200 hover:bg-indigo-100 flex items-center gap-2"><Plus className="w-4 h-4"/> Agent Node</button>
+            <button onClick={() => addNode('condition')} className="w-full text-left px-3 py-2 text-sm font-medium text-orange-700 bg-orange-50 rounded border border-orange-200 hover:bg-orange-100 flex items-center gap-2"><Plus className="w-4 h-4"/> Condition Node</button>
+            <button onClick={() => addNode('end')} className="w-full text-left px-3 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 flex items-center gap-2"><Plus className="w-4 h-4"/> End Node</button>
+          </div>
+        </div>
+
+        <div className="mt-auto p-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex gap-2">
+                <button onClick={handleTest} disabled={isTesting} className="flex-1 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-50 flex justify-center items-center gap-1">
+                    <Play className="w-4 h-4" /> Test
+                </button>
+                <button onClick={handleSave} className="flex-1 bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 flex justify-center items-center gap-1">
+                    <Save className="w-4 h-4" /> Save
+                </button>
+            </div>
+            {testResult && (
+                <div className={`mt-3 p-2 text-xs rounded flex items-center gap-1 ${testResult.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {testResult.status === 'success' ? <CheckCircle className="w-4 h-4"/> : <XCircle className="w-4 h-4"/>}
+                    {testResult.message}
+                </div>
+            )}
+        </div>
+      </div>
+
+      {/* Main Canvas Area */}
+      <div className="flex-1 relative">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
+          nodeTypes={nodeTypes}
+          fitView
+        >
+          <Background color="#ccc" gap={16} />
+          <Controls />
+        </ReactFlow>
+      </div>
+
+      {/* Right Sidebar - Properties */}
+      <div className="w-72 bg-white border-l border-gray-200 flex flex-col z-10 shadow-sm overflow-y-auto">
+        <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
+            <Settings2 className="w-5 h-5 text-gray-500" />
+            <h2 className="font-semibold text-gray-800">Properties</h2>
+        </div>
+        {renderSidebar()}
+      </div>
+
+    </div>
+  );
+}

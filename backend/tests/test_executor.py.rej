@@ -1,0 +1,16 @@
+--- test_executor.py
++++ test_executor.py
+@@ -76,14 +76,11 @@
+     assert len(history) == 2
+
+     # Agent 1 history checks
+-    assert history[0]["agent_name"] == "DataAnalyzer"
+-    assert history[0]["input_used"] == initial_input
+     assert history[0]["output_produced"]["status"] == "success"
+     assert history[0]["output_produced"]["user_id"] == "12345"
+
+     # Agent 2 history checks
+-    assert history[1]["agent_name"] == "NOCGenerator"
+-    assert history[1]["input_used"] == {"customer_id": "12345"}
++    assert history[1]["input_used"]["customer_id"] == "12345"
+     assert history[1]["output_produced"]["status"] == "success"
