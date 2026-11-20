@@ -17,3 +17,15 @@ body {
     scrollbar-width: none;
   }
 }
+
+/* Our step nodes draw their own card; neutralise React Flow's built-in input/output node styles. */
+.react-flow__node-input,
+.react-flow__node-default,
+.react-flow__node-output {
+  padding: 0;
+  border: none !important;
+  background: transparent;
+  box-shadow: none !important;
+  width: auto;
+  border-radius: 0;
+}

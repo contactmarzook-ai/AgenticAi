@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
-import api from '../lib/api';
+import { RefreshCw, RotateCcw } from 'lucide-react';
+import api, { errorMessage } from '../lib/api';
 import { can } from '../lib/auth';
 import { Alert, Badge, Button, JsonBlock, Modal, PageHeader, Select, StatusBadge, Table, formatDate } from '../lib/ui';
 import RunSteps from './RunSteps';
@@ -31,7 +31,7 @@ export default function Runs({ user }) {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Runs"
+        title="History"
         subtitle={can(user, 'run:read_all') ? 'Every agent and workflow execution across the platform.' : 'Your agent and workflow executions.'}
         actions={
           <Button variant="secondary" icon={RefreshCw} onClick={load}>
@@ -91,6 +91,17 @@ export default function Runs({ user }) {
               <span>{formatDate(detail.started_at)} → {formatDate(detail.finished_at)}</span>
             </div>
             {detail.error && <Alert>{detail.error}</Alert>}
+            <Button variant="secondary" icon={RotateCcw} onClick={async () => {
+              try {
+                const r = (await api.post(`/runs/${detail.id}/rerun`)).data;
+                setDetail(null);
+                setOffset(0);
+                load();
+                alert(`Started run #${r.id}`);
+              } catch (err) {
+                alert(errorMessage(err));
+              }
+            }}>Run again with the same input</Button>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <div className="mb-1 text-xs text-gray-500">Input</div>

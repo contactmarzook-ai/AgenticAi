@@ -14,7 +14,7 @@ Plus PostgreSQL 14+ and at least one OpenAI-compatible LLM endpoint.
 For a single server (PostgreSQL, Ollama, API, scheduler, web):
 
 ```bash
-cp .env.example .env        # set POSTGRES_PASSWORD, JWT_SECRET, BOOTSTRAP_ADMIN_PASSWORD
+cp .env.example .env        # set POSTGRES_PASSWORD, JWT_SECRET, CREDENTIALS_KEY, BOOTSTRAP_ADMIN_PASSWORD
 docker compose up -d --build
 docker compose exec ollama ollama pull qwen2.5:7b-instruct
 ```
@@ -63,9 +63,13 @@ kubectl create namespace agentos
 kubectl -n agentos create secret generic agentos-secrets \
   --from-literal=DATABASE_URL='postgresql+psycopg://agentos:PASSWORD@db-host:5432/agentos?sslmode=require' \
   --from-literal=JWT_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+  --from-literal=CREDENTIALS_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" \
   --from-literal=BOOTSTRAP_ADMIN_EMAIL='admin@yourcompany.com' \
   --from-literal=BOOTSTRAP_ADMIN_PASSWORD='a-strong-initial-password'
 ```
+
+`CREDENTIALS_KEY` encrypts saved connections (SMTP passwords, API keys, webhook URLs). Keep a
+copy in your secret manager: if it is lost or changed, saved connections can no longer be read.
 
 The bootstrap admin is only created while the users table is empty. After the first sign-in,
 change that password (sidebar → Change password) and you can remove the two `BOOTSTRAP_*` keys.

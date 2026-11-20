@@ -9,6 +9,7 @@ x-api-env: &api-env
   APP_ENV: production
   DATABASE_URL: postgresql+psycopg://agentos:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/agentos
   JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+  CREDENTIALS_KEY: ${CREDENTIALS_KEY:?set CREDENTIALS_KEY in .env}
   BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
   BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
   LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}

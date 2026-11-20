@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Bot, GitBranch, History, Hexagon, KeyRound, LogOut, MessageSquare, Activity, ScrollText, Server, Users as UsersIcon } from 'lucide-react';
+import { Activity, Bot, Hexagon, History, KeyRound, LogOut, MessageSquare, Plug, ScrollText, Server, SlidersHorizontal, Users as UsersIcon, Workflow } from 'lucide-react';
 import api from './lib/api';
 import { can, useAuth } from './lib/auth';
 import { cx } from './lib/ui';
 import Login from './pages/Login';
 import Chat from './pages/Chat';
 import Agents from './pages/Agents';
-import Workflows from './pages/Workflows';
+import Automations from './pages/Automations';
+import Connections from './pages/Connections';
+import Settings from './pages/Settings';
 import Runs from './pages/Runs';
 import Models from './pages/Models';
 import Users from './pages/Users';
@@ -15,11 +17,13 @@ import Monitoring from './pages/Monitoring';
 import ChangePassword from './pages/ChangePassword';
 
 const PAGES = [
+  { id: 'automations', label: 'Automations', icon: Workflow, perm: 'workflow:read', component: Automations },
   { id: 'chat', label: 'Chat', icon: MessageSquare, perm: 'chat:use', component: Chat },
+  { id: 'runs', label: 'History', icon: History, perm: 'run:read_own', component: Runs },
   { id: 'agents', label: 'Agents', icon: Bot, perm: 'agent:read', component: Agents },
-  { id: 'workflows', label: 'Workflows', icon: GitBranch, perm: 'workflow:read', component: Workflows },
-  { id: 'runs', label: 'Runs', icon: History, perm: 'run:read_own', component: Runs },
+  { id: 'connections', label: 'Connections', icon: Plug, perm: 'workflow:write', component: Connections },
   { section: 'Administration', perm: 'user:manage' },
+  { id: 'settings', label: 'Settings', icon: SlidersHorizontal, perm: 'settings:manage', component: Settings },
   { id: 'monitoring', label: 'Monitoring', icon: Activity, perm: 'monitoring:read', component: Monitoring },
   { id: 'models', label: 'Models', icon: Server, perm: 'model:manage', component: Models },
   { id: 'users', label: 'Users', icon: UsersIcon, perm: 'user:manage', component: Users },
@@ -27,7 +31,7 @@ const PAGES = [
 ];
 
 function usePage() {
-  const read = () => window.location.hash.replace('#/', '').split('?')[0] || 'chat';
+  const read = () => window.location.hash.replace('#/', '').split('?')[0] || 'automations';
   const [page, setPage] = useState(read);
   useEffect(() => {
     const onHash = () => setPage(read());

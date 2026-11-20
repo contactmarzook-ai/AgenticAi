@@ -1,5 +1,26 @@
 import { Badge, JsonBlock, StatusBadge } from '../lib/ui';
 
+const isPlain = (v) => v === null || ['string', 'number', 'boolean'].includes(typeof v);
+
+/** Friendly display of an automation's result: text as text, flat objects as a labelled list. */
+export function ResultView({ value }) {
+  if (value === undefined || value === null || value === '') return <p className="text-sm text-gray-500">No result.</p>;
+  if (isPlain(value)) return <div className="whitespace-pre-wrap rounded-md border bg-gray-50 p-4 text-sm">{String(value)}</div>;
+  if (!Array.isArray(value) && Object.values(value).every(isPlain)) {
+    return (
+      <dl className="divide-y rounded-md border bg-gray-50 text-sm">
+        {Object.entries(value).map(([k, v]) => (
+          <div key={k} className="grid grid-cols-3 gap-3 px-4 py-2">
+            <dt className="font-medium text-gray-600">{k.replace(/_/g, ' ')}</dt>
+            <dd className="col-span-2 whitespace-pre-wrap break-words text-gray-900">{v === null ? '—' : String(v)}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+  return <JsonBlock value={value} />;
+}
+
 /** Renders the step trace of an agent or workflow run. */
 export default function RunSteps({ steps }) {
   if (!steps?.length) return <p className="text-sm text-gray-500">No steps recorded.</p>;
@@ -11,7 +32,7 @@ export default function RunSteps({ steps }) {
             <span className="text-xs text-gray-400">#{i + 1}</span>
             {s.node_id ? (
               <>
-                <Badge color="indigo">{s.type}</Badge>
+                <Badge color="indigo">{s.type === 'action' ? s.action : s.type === 'input' ? 'start' : s.type === 'end' ? 'finish' : s.type}</Badge>
                 <span className="font-medium">{s.label || s.node_id}</span>
               </>
             ) : s.type === 'tool' ? (
@@ -23,6 +44,7 @@ export default function RunSteps({ steps }) {
               <Badge>LLM</Badge>
             )}
             {s.status && <StatusBadge status={s.status === 'success' ? 'succeeded' : s.status} />}
+            {s.attempts > 1 && <span className="text-xs text-gray-400">{s.attempts} attempts</span>}
             {s.duration_ms != null && <span className="text-xs text-gray-400">{s.duration_ms} ms</span>}
           </div>
           {s.type === 'llm' && !s.node_id && (
@@ -43,11 +65,13 @@ export default function RunSteps({ steps }) {
             </div>
           )}
           {s.node_id && s.status !== 'skipped' && (
-            <div className="grid gap-2 md:grid-cols-2">
-              <div>
-                <div className="text-xs text-gray-500">input</div>
-                <JsonBlock value={s.input} />
-              </div>
+            <div className={s.input !== undefined ? 'grid gap-2 md:grid-cols-2' : ''}>
+              {s.input !== undefined && (
+                <div>
+                  <div className="text-xs text-gray-500">input</div>
+                  <JsonBlock value={s.input} />
+                </div>
+              )}
               <div>
                 <div className="text-xs text-gray-500">{s.error ? 'error' : 'output'}</div>
                 {s.error ? <p className="text-xs text-red-600">{s.error}</p> : <JsonBlock value={s.output} />}

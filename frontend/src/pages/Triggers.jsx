@@ -58,9 +58,9 @@ export default function Triggers({ workflow, onClose }) {
   const hookUrl = (id) => `${window.location.origin}/api/hooks/${id}`;
 
   return (
-    <Modal wide title={`Triggers for “${workflow.name}”`} onClose={onClose}>
+    <Modal wide title={`Schedule & webhooks: “${workflow.name}”`} onClose={onClose}>
       <div className="space-y-4">
-        <p className="text-sm text-gray-500">Triggers always run the <b>active</b> version of this workflow, as the trigger's owner.</p>
+        <p className="text-sm text-gray-500">These start the <b>published</b> version of this automation automatically. Publish it first.</p>
         <Alert>{error}</Alert>
         {token && (
           <Alert kind="success">

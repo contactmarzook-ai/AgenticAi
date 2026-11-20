@@ -1,14 +1,24 @@
 # AgentOS
 
-A self-hosted platform for building and running AI agents and workflows on **your own models**
-(Ollama, vLLM or any OpenAI-compatible endpoint), with role-based access control, audit logging
-and a Kubernetes deployment.
+A self-hosted, no-code **workflow automation** platform with built-in AI, running on **your own
+models** (Ollama, vLLM or any OpenAI-compatible endpoint), with role-based access control,
+encrypted connections, audit logging and a Kubernetes deployment.
 
+- **Describe it, get it**: type what you want automated in plain words; the AI drafts the
+  workflow (steps, branches, form) for you to review, test and publish.
+- **Visual builder** in the style of n8n/Zapier: ready-made steps with plain forms (no code),
+  *Insert data* to use results of earlier steps, If/else and Switch branches, per-step retries
+  and "keep going on error", a test run that shows each step's result on the canvas.
+- **Ready-made steps**: AI (ask, summarize, classify, extract data, translate, run an agent),
+  apps (HTTP request, email, Slack, Teams), data (set fields, compose text, read JSON, calculate,
+  date & time, text tools), flow (wait, stop with error). Admins can switch any step off.
+- **Templates**: support-ticket routing, invoice approval, meeting notes, lead qualification,
+  health checks, daily briefings and more, one click away.
+- **Connections**: saved accounts (SMTP, Slack/Teams webhooks, API keys) encrypted at rest and
+  never shown again.
+- **Start it any way**: a form anyone can fill in, chat, a cron schedule, or a webhook.
 - **Agents**: a system prompt, a model and a set of tools. Agents call tools through the standard
   OpenAI tool-calling protocol, so they work with local models that support it.
-- **Workflows**: a visual graph of agent, tool, condition and transform steps. Workflows are
-  versioned: you edit a draft, test it, then activate it.
-- **Triggers**: run a workflow on a cron schedule or from an authenticated webhook.
 - **Chat**: each message is routed to the right agent or workflow (keyword match, then an LLM
   router), or answered directly by the default model.
 - **Controls**: three roles, department/visibility scoping, per-role model allowlists, a tool
@@ -28,8 +38,16 @@ api ──► LLM endpoint(s): Ollama / vLLM / any OpenAI-compatible /v1/chat/co
 | Role | Can |
 |---|---|
 | `user` | Chat; run agents and workflows shared with them; see their own runs |
-| `builder` | Everything above, plus create/edit agents, workflows and triggers |
-| `admin` | Everything, plus users, models/providers, audit log, monitoring and all runs |
+| `builder` | Everything above, plus build automations, agents, schedules/webhooks and connections |
+| `admin` | Everything, plus platform settings, users, models, audit log, monitoring and all runs |
+
+Admin **Settings** control: which steps exist, which hosts HTTP steps may call (with a separate
+switch for private/intranet addresses), who may create connections, whether the AI builder is
+on, and the longest allowed Wait.
+
+Automations use agents and connections **with their owner's access**: someone running a shared
+automation can only reach what its author was allowed to use, and an automation can never use
+an agent or connection its owner cannot see.
 
 Every agent and workflow has a **visibility**: `private` (owner and admins), `department`
 (same department as the owner) or `public`. Visibility is enforced on listing, on running
@@ -72,20 +90,21 @@ def lookup_customer(customer_id: str) -> dict:
 use e.g. `qwen2.5:7b-instruct` or `llama3.1:8b` (pull them first). Mark models that cannot call
 tools as such on the Models page.
 
-## Workflows
+## Automations (workflows)
 
-Node types: **Input**, **Agent** (sends a message, outputs `{"answer": ...}`), **Tool**,
-**Condition** (true/false branches), **Transform** (build an object) and **End**.
-Each input of a node is a *mapping*: a fixed value, a field of the workflow input, a field of an
-earlier node's output, or a text template such as `Summarise {{node-2.answer}} for {{input.name}}`.
+Variables use `{{input.<form field>}}` and `{{<step id>.<field>}}`; the builder inserts them for
+you. A field that is exactly one variable keeps the value's type (numbers stay numbers).
+New step types are added in `backend/app/nodes/` with a form schema; the UI renders them
+automatically. (Older `agent`/`tool`/`transform` node types from earlier versions still run.)
 
-A node runs after all of its predecessors have finished, if at least one incoming branch was
-taken; nodes on branches that were not taken are skipped.
+A step runs after all of the steps before it have finished, if at least one incoming branch was
+taken; steps on branches that were not taken are skipped. A failing step can retry (up to 5
+times) or "keep going", in which case its output is `{ "error": "..." }`.
 
-Lifecycle: save a **draft** → **Validate** → **Test** (runs the draft) → **Activate** (validates
-again and archives the previous active version). Editing an active version saves a new draft
-version; the active one keeps serving until you activate the new one. Triggers and chat always
-use the active version.
+Lifecycle: save a **draft** → **Test** (runs the draft; results appear on each step) →
+**Publish** (validates and makes this version live, archiving the previous one). Editing a live
+automation saves a new draft version; the live one keeps running until you publish the new one.
+Schedules, webhooks and chat always use the live version.
 
 ## Running locally (development)
 
@@ -126,6 +145,7 @@ All settings are environment variables (see `backend/app/config.py`). The import
 | `APP_ENV` | `development` | `production` refuses to start with a weak `JWT_SECRET`, SQLite, or auto-created tables, and hides `/api/docs` |
 | `DATABASE_URL` | `sqlite:///./agentos.db` | Production: `postgresql+psycopg://user:pass@host:5432/db` |
 | `JWT_SECRET` | dev value | ≥ 32 random characters in production |
+| `CREDENTIALS_KEY` | dev value | Encrypts saved connections; ≥ 32 random characters in production. Back it up |
 | `JWT_EXPIRE_MINUTES` | `480` | Session length |
 | `BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` | — | Creates the first admin when no users exist |
 | `LLM_BASE_URL` / `LLM_DEFAULT_MODEL` | Ollama on localhost | Seeds the first provider/model when none exist; manage them afterwards on the Models page |
@@ -135,7 +155,7 @@ All settings are environment variables (see `backend/app/config.py`). The import
 | `USER_RUNS_PER_MINUTE` | `30` | Per-user limit on runs and chat messages (0 = off) |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCKOUT_MINUTES` | `5` / `15` | Account lockout |
 | `PASSWORD_MIN_LENGTH` | `12` | Plus three character classes |
-| `HTTP_TOOL_ALLOWED_HOSTS` | empty | Hosts `http_get` may call; empty disables it |
+| `HTTP_TOOL_ALLOWED_HOSTS` | empty | Initial outbound host allowlist; admins manage it under Settings |
 | `LOG_JSON` | `false` | JSON logs (on in the container images) |
 
 LLM provider API keys are never stored in the database: a provider stores the *name* of an
@@ -145,12 +165,15 @@ environment variable (e.g. `VLLM_API_KEY`) that holds the key.
 
 Interactive docs at `/api/docs` outside production. Main routes:
 `/api/auth/*`, `/api/agents`, `/api/workflows`, `/api/runs`, `/api/triggers`, `/api/chat/*`,
-`/api/models`, `/api/tools`, `/api/admin/{users,audit,metrics}`, and `/api/hooks/{trigger_id}`
+`/api/models`, `/api/tools`, `/api/nodes` (step catalog), `/api/credentials`, `/api/settings`,
+`/api/templates`, `/api/workflows/generate` (AI builder), `/api/admin/{users,audit,metrics}`,
+and `/api/hooks/{trigger_id}`
 (webhooks, authenticated with the `X-Webhook-Token` header). Health: `/healthz`, `/readyz`.
 
 ## Not included (deliberately)
 
-Single sign-on (SAML/OIDC) and LDAP, retrieval over documents (RAG), cost budgets, a message
-queue and multi-tenant isolation are not part of this version. Sign-in is local email/password,
+Single sign-on (SAML/OIDC) and LDAP, OAuth-based app connectors (Google, Microsoft 365,
+Salesforce...), looping over lists of items, retrieval over documents (RAG), cost budgets, a
+message queue and multi-tenant isolation are not part of this version. Sign-in is local email/password,
 managed by admins. Runs started through the API, schedules and webhooks execute on a thread pool
 inside the API pods; a run interrupted by a pod restart is marked failed by the scheduler.

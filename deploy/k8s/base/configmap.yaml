@@ -1,4 +1,4 @@
-# Non-secret settings. Secrets (DATABASE_URL, JWT_SECRET, BOOTSTRAP_ADMIN_*) live in the
+# Non-secret settings. Secrets (DATABASE_URL, JWT_SECRET, CREDENTIALS_KEY, BOOTSTRAP_ADMIN_*) live in the
 # "agentos-secrets" Secret, which you create yourself (see deploy/README.md).
 apiVersion: v1
 kind: ConfigMap

@@ -116,7 +116,7 @@ def to_definition(blueprint: dict) -> dict:
             edge["sourceHandle"] = (
                 str(branch).strip().lower() if str(branch).lower() in ("true", "false", "default") else str(branch)
             )
-            edge["label"] = edge["sourceHandle"]
+            edge["label"] = {"true": "Yes", "false": "No"}.get(edge["sourceHandle"], edge["sourceHandle"])
         edges.append(edge)
 
     layout(nodes, edges)

@@ -83,9 +83,13 @@ class Settings:
         if not self.is_production:
             return
         problems = []
-        if self.jwt_secret == DEV_JWT_SECRET or len(self.jwt_secret) < 32:
+        if self.jwt_secret == DEV_JWT_SECRET or len(self.jwt_secret) < 32 or self.jwt_secret.startswith("change-me"):
             problems.append("JWT_SECRET must be set to a random value of at least 32 characters")
-        if self.credentials_key == DEV_CREDENTIALS_KEY or len(self.credentials_key) < 32:
+        if (
+            self.credentials_key == DEV_CREDENTIALS_KEY
+            or len(self.credentials_key) < 32
+            or self.credentials_key.startswith("change-me")
+        ):
             problems.append("CREDENTIALS_KEY must be set to a random value of at least 32 characters")
         if self.database_url.startswith("sqlite"):
             problems.append("DATABASE_URL must point to PostgreSQL in production")
