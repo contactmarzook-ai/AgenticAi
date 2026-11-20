@@ -190,7 +190,7 @@ def run_definition(
                     taken = True
             if not taken:
                 state[node_id] = "skipped"
-                steps.append({"node_id": node_id, "type": ntype, "status": "skipped"})
+                steps.append({"node_id": node_id, "type": ntype, "label": data.get("label"), "status": "skipped"})
                 continue
 
         if time.monotonic() > deadline:

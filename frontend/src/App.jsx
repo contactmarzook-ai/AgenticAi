@@ -1,38 +1,108 @@
-import React, { useState } from 'react';
-import { useAuthStore } from './store/authStore';
-import Sidebar from './components/Sidebar';
-import Chat from './components/Chat';
-import Agents from './components/Agents';
-import Users from './components/Users';
-import Management from './components/Management';
-import Login from './components/Login';
+import { useEffect, useState } from 'react';
+import { Bot, GitBranch, History, Hexagon, KeyRound, LogOut, MessageSquare, Activity, ScrollText, Server, Users as UsersIcon } from 'lucide-react';
+import api from './lib/api';
+import { can, useAuth } from './lib/auth';
+import { cx } from './lib/ui';
+import Login from './pages/Login';
+import Chat from './pages/Chat';
+import Agents from './pages/Agents';
+import Workflows from './pages/Workflows';
+import Runs from './pages/Runs';
+import Models from './pages/Models';
+import Users from './pages/Users';
+import Audit from './pages/Audit';
+import Monitoring from './pages/Monitoring';
+import ChangePassword from './pages/ChangePassword';
 
-function App() {
-  const token = useAuthStore((state) => state.token);
-  const [activeTab, setActiveTab] = useState('chat');
-  const [activeSessionId, setActiveSessionId] = useState(null);
+const PAGES = [
+  { id: 'chat', label: 'Chat', icon: MessageSquare, perm: 'chat:use', component: Chat },
+  { id: 'agents', label: 'Agents', icon: Bot, perm: 'agent:read', component: Agents },
+  { id: 'workflows', label: 'Workflows', icon: GitBranch, perm: 'workflow:read', component: Workflows },
+  { id: 'runs', label: 'Runs', icon: History, perm: 'run:read_own', component: Runs },
+  { section: 'Administration', perm: 'user:manage' },
+  { id: 'monitoring', label: 'Monitoring', icon: Activity, perm: 'monitoring:read', component: Monitoring },
+  { id: 'models', label: 'Models', icon: Server, perm: 'model:manage', component: Models },
+  { id: 'users', label: 'Users', icon: UsersIcon, perm: 'user:manage', component: Users },
+  { id: 'audit', label: 'Audit log', icon: ScrollText, perm: 'audit:read', component: Audit },
+];
 
-  if (!token) {
-    return <Login />;
-  }
+function usePage() {
+  const read = () => window.location.hash.replace('#/', '').split('?')[0] || 'chat';
+  const [page, setPage] = useState(read);
+  useEffect(() => {
+    const onHash = () => setPage(read());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return [page, (p) => (window.location.hash = `#/${p}`)];
+}
+
+export default function App() {
+  const { token, user, setUser, logout } = useAuth();
+  const [page, go] = usePage();
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (token && !user) {
+      api.get('/auth/me').then((r) => setUser(r.data)).catch(() => logout());
+    }
+  }, [token, user, setUser, logout]);
+
+  if (!token) return <Login />;
+  if (!user) return <div className="flex h-screen items-center justify-center text-sm text-gray-500">Loading…</div>;
+
+  const visible = PAGES.filter((p) => can(user, p.perm));
+  const current = visible.find((p) => p.id === page && p.component) || visible.find((p) => p.component);
+  const Page = current.component;
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
-      <Sidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          activeSessionId={activeSessionId}
-          setActiveSessionId={setActiveSessionId}
-      />
-
-      <main className="flex-1 relative h-full overflow-hidden">
-        {activeTab === 'chat' && <Chat sessionId={activeSessionId} setSessionId={setActiveSessionId} />}
-        {activeTab === 'agents' && <Agents />}
-        {activeTab === 'users' && <Users />}
-        {activeTab === 'management' && <Management />}
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <aside className="flex w-56 flex-shrink-0 flex-col border-r bg-white">
+        <div className="flex items-center gap-2 px-4 py-4">
+          <div className="rounded-md bg-indigo-600 p-1.5">
+            <Hexagon className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-lg font-bold text-gray-900">AgentOS</span>
+        </div>
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
+          {visible.map((p) =>
+            p.section ? (
+              <div key={p.section} className="px-2 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                {p.section}
+              </div>
+            ) : (
+              <button
+                key={p.id}
+                onClick={() => go(p.id)}
+                className={cx(
+                  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm',
+                  current.id === p.id ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-gray-600 hover:bg-gray-50',
+                )}
+              >
+                <p.icon className="h-4 w-4" />
+                {p.label}
+              </button>
+            ),
+          )}
+        </nav>
+        <div className="border-t p-3 text-sm">
+          <div className="truncate font-medium text-gray-800" title={user.email}>{user.full_name || user.email}</div>
+          <div className="mb-2 text-xs text-gray-500">
+            <span className="capitalize">{user.role}</span>
+            {user.department ? ` · ${user.department}` : ''}
+          </div>
+          <button onClick={() => setShowPassword(true)} className="flex w-full items-center gap-2 rounded px-1 py-1 text-gray-600 hover:bg-gray-50">
+            <KeyRound className="h-4 w-4" /> Change password
+          </button>
+          <button onClick={logout} className="flex w-full items-center gap-2 rounded px-1 py-1 text-red-600 hover:bg-red-50">
+            <LogOut className="h-4 w-4" /> Sign out
+          </button>
+        </div>
+      </aside>
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Page user={user} />
       </main>
+      {showPassword && <ChangePassword onClose={() => setShowPassword(false)} />}
     </div>
   );
 }
-
-export default App;
