@@ -190,6 +190,7 @@ class WorkflowOut(ORM):
 
 class WorkflowRunRequest(BaseModel):
     input: dict[str, Any] = {}
+    from_form: bool = False  # started from the web form (shown as such in History)
 
 
 class ValidationOut(BaseModel):
@@ -316,6 +317,11 @@ class Page(BaseModel):
 
 
 # ---------- node catalog / connections / settings ----------
+class CredentialTestOut(BaseModel):
+    ok: bool
+    message: str
+
+
 class CredentialIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     type: str = Field(max_length=50)

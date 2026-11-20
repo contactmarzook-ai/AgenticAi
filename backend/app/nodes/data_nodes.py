@@ -60,7 +60,7 @@ def compose_text(cfg: dict, ctx: NodeContext):
     "Data",
     "Turn JSON text (for example an API response body) into fields later steps can use.",
     "braces",
-    [Field("text", "JSON text", "textarea", required=True, placeholder="{{node-1.body}}")],
+    [Field("text", "JSON text", "textarea", required=True, placeholder="{{http.body}}")],
     output_hint="{ data }",
 )
 def parse_json(cfg: dict, ctx: NodeContext):

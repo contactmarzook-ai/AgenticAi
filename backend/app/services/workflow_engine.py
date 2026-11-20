@@ -253,6 +253,7 @@ def run_definition(
     final_output: Any = None
     last_output: Any = None
     workflow_input = workflow_input if isinstance(workflow_input, dict) else {"value": workflow_input}
+    branching_ids = frozenset(n["id"] for n in nodes if n.get("type") in BRANCHING)
 
     for node_id in topological_order(nodes, edges):
         node = by_id[node_id]
@@ -282,7 +283,18 @@ def run_definition(
             attempt += 1
             try:
                 out = _execute_node(
-                    ntype, data, outputs, workflow_input, taken_from, call_agent, call_tool, call_action, node, step
+                    ntype,
+                    data,
+                    outputs,
+                    workflow_input,
+                    taken_from,
+                    call_agent,
+                    call_tool,
+                    call_action,
+                    node,
+                    step,
+                    branching_ids,
+                    last_output,
                 )
                 break
             except Exception as exc:  # noqa: BLE001 - every failure is reported on the step
@@ -312,7 +324,20 @@ def run_definition(
     return {"output": final_output if final_output is not None else last_output, "steps": steps}
 
 
-def _execute_node(ntype, data, outputs, workflow_input, taken_from, call_agent, call_tool, call_action, node, step):
+def _execute_node(
+    ntype,
+    data,
+    outputs,
+    workflow_input,
+    taken_from,
+    call_agent,
+    call_tool,
+    call_action,
+    node,
+    step,
+    branching_ids=frozenset(),
+    last_output=None,
+):
     mappings = data.get("mappings") or {}
     if ntype == "input":
         return workflow_input
@@ -338,10 +363,11 @@ def _execute_node(ntype, data, outputs, workflow_input, taken_from, call_agent, 
         if mappings:
             return {k: resolve_mapping(m, outputs, workflow_input) for k, m in mappings.items()}
         # Default: the output of the step that led here (the last one, if several branches joined).
+        # If that step only made a decision (If/Switch), return the last real result instead.
         for src in reversed(taken_from):
-            if outputs.get(src) is not None:
+            if outputs.get(src) is not None and src not in branching_ids:
                 return outputs[src]
-        return None
+        return last_output
 
     # ---- older node types ----
     inputs = {k: resolve_mapping(m, outputs, workflow_input) for k, m in mappings.items()}

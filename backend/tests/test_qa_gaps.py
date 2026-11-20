@@ -59,13 +59,14 @@ def test_webhook_and_schedule_respect_the_form(client, admin):
     from app.models import Trigger
     from app.services.scheduler import tick
 
-    sched = client.post(
-        "/api/triggers",
-        headers=admin,
-        json={"name": "s", "workflow_group_id": wf["group_id"], "type": "schedule", "cron": "* * * * *"},
-    ).json()
+    base = {"name": "s", "workflow_group_id": wf["group_id"], "type": "schedule", "cron": "* * * * *"}
+    r = client.post("/api/triggers", headers=admin, json=base)
+    assert r.status_code == 400 and "'Name' is required" in json.dumps(r.json())
+    sched = client.post("/api/triggers", headers=admin, json={**base, "input": {"name": "nightly"}}).json()
     db = SessionLocal()
-    db.get(Trigger, sched["id"]).next_run_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    row = db.get(Trigger, sched["id"])
+    row.next_run_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    row.input = {}  # e.g. the form gained a required field after the schedule was made
     db.commit()
     tick(db)
     failed = db.query(Run).filter(Run.trigger_id == sched["id"]).one()
@@ -216,3 +217,83 @@ def test_generate_is_rate_limited(client, make_user, llm):
         for _ in range(11)
     ]
     assert codes[:10] == [422] * 10 and codes[10] == 429
+
+
+def test_turned_off_automation_stays_listed_and_users_see_only_live(client, admin, make_user):
+    wf = client.post(
+        "/api/workflows",
+        headers=admin,
+        json={"name": "Off", "definition": chain(start(), finish()), "visibility": "public"},
+    ).json()
+    client.post(
+        "/api/workflows",
+        headers=admin,
+        json={"name": "Draft only", "definition": chain(start(), finish()), "visibility": "public"},
+    )
+    client.post(f"/api/workflows/{wf['id']}/activate", headers=admin)
+    client.post(f"/api/workflows/{wf['id']}/deactivate", headers=admin)
+    listed = {w["name"]: w["status"] for w in client.get("/api/workflows", headers=admin).json()}
+    assert listed == {"Off": "archived", "Draft only": "draft"}
+    user = make_user("u@example.com")
+    assert (
+        client.get("/api/workflows", headers=user).json() == []
+    )  # drafts and turned-off ones are not offered to users
+    assert (
+        client.post(f"/api/workflows/{wf['id']}/activate", headers=admin).json()["status"] == "active"
+    )  # turn back on
+    assert [w["name"] for w in client.get("/api/workflows", headers=user).json()] == ["Off"]
+
+
+def test_finish_after_a_no_branch_returns_real_output(client, admin):
+    d = {
+        "nodes": [
+            start([{"key": "n", "label": "N", "type": "number"}]),
+            step("calc", "calculate", {"expression": "{{input.n}} * 2"}),
+            {
+                "id": "big",
+                "type": "condition",
+                "data": {"label": "Big?", "condition": {"left": "{{calc.result}}", "operator": ">", "right": "100"}},
+            },
+            step("alert", "compose_text", {"template": "big!"}),
+            finish(),
+        ],
+        "edges": [
+            link("start", "calc"),
+            link("calc", "big"),
+            link("big", "alert", "true"),
+            link("big", "finish", "false"),
+            link("alert", "finish"),
+        ],
+    }
+    _, run = save_and_test(client, admin, d, {"n": 3})
+    assert run.json()["output"]["result"] == {"result": 6}
+
+
+def test_settings_normalise_hosts_and_report_affected_automations(client, admin):
+    r = client.put(
+        "/api/settings",
+        headers=admin,
+        json={"http_allowed_hosts": ["https://API.GitHub.com:443/repos", "*.example.com", ""]},
+    )
+    assert r.json()["http_allowed_hosts"] == ["*.example.com", "api.github.com"]
+    assert client.put("/api/settings", headers=admin, json={"http_allowed_hosts": ["not a host!"]}).status_code == 400
+    client.post(
+        "/api/workflows",
+        headers=admin,
+        json={
+            "name": "Uses compose",
+            "definition": chain(start(), step("c", "compose_text", {"template": "x"}), finish()),
+        },
+    )
+    r = client.put("/api/settings", headers=admin, json={"disabled_nodes": ["compose_text"]}).json()
+    assert r["affected_automations"][0]["name"] == "Uses compose"
+
+
+def test_connection_checks(client, admin):
+    r = client.post(
+        "/api/credentials", headers=admin, json={"name": "bad", "type": "slack_webhook", "data": {"url": "not a url"}}
+    )
+    assert r.status_code == 400 and "https://" in r.json()["detail"]
+    cred = make_smtp(client, admin)
+    res = client.post(f"/api/credentials/{cred['id']}/test", headers=admin).json()
+    assert res["ok"] is False and "Could not reach" in res["message"]

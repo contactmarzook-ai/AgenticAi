@@ -11,6 +11,7 @@ from ..models import Trigger, User, Workflow, utcnow
 from ..rbac import can_edit, can_view, require_permission
 from ..schemas import RunOut, TriggerCreated, TriggerIn, TriggerOut
 from ..security import hash_token, new_webhook_token
+from ..services.form_input import check_input
 from ..services.runs import submit_run
 from ..services.scheduler import InputProblem, next_fire_time, start_trigger_run, valid_cron
 
@@ -43,6 +44,22 @@ def _validate(body: TriggerIn) -> None:
             next_fire_time(body.cron, body.timezone)
         except Exception:
             raise HTTPException(status_code=400, detail=f"Unknown timezone '{body.timezone}'")
+
+
+def _check_schedule_input(db: Session, body: TriggerIn) -> None:
+    """A schedule cannot ask anyone for input, so it must supply every required form field."""
+    if body.type != "schedule":
+        return
+    wf = _latest(db, body.workflow_group_id)
+    _, problems = check_input((wf.definition if wf else {}) or {}, body.input or {})
+    if problems:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "A schedule runs without anyone filling in the form. Set default values",
+                "errors": problems,
+            },
+        )
 
 
 def _visible_trigger(db: Session, trigger_id: int, user: User) -> Trigger:
@@ -82,6 +99,7 @@ def create_trigger(
 ):
     _check_workflow(db, user, body.workflow_group_id)
     _validate(body)
+    _check_schedule_input(db, body)
     trig = Trigger(**body.model_dump(), owner_id=user.id)
     token = None
     if body.type == "schedule":
@@ -120,6 +138,7 @@ def update_trigger(
     if body.type != trig.type or body.workflow_group_id != trig.workflow_group_id:
         raise HTTPException(status_code=400, detail="Trigger type and workflow cannot be changed; create a new trigger")
     _validate(body)
+    _check_schedule_input(db, body)
     for k in ("name", "cron", "timezone", "input", "is_enabled"):
         setattr(trig, k, getattr(body, k))
     if trig.type == "schedule":

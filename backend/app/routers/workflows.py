@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..database import get_db
 from ..models import AuditLog, Run, Trigger, User, Workflow
-from ..rbac import can_edit, can_view, require_permission
+from ..rbac import can_edit, can_view, has_permission, require_permission
 from ..schemas import GenerateRequest, RunOut, ValidationOut, WorkflowIn, WorkflowOut, WorkflowRunRequest
 from ..services.ai_builder import BuilderError
 from ..services.ai_builder import generate as ai_generate
@@ -61,17 +61,38 @@ def list_workflows(
     q = db.query(Workflow)
     if group_id:
         q = q.filter(Workflow.group_id == group_id)
-    elif not include_archived:
-        q = q.filter(Workflow.status != "archived")
-    rows = q.order_by(Workflow.name, Workflow.group_id, Workflow.version.desc()).all()
-    return [_out(w, user) for w in rows if can_view(user, w)]
+    rows = [
+        w for w in q.order_by(Workflow.name, Workflow.group_id, Workflow.version.desc()).all() if _listable(user, w)
+    ]
+    if group_id or include_archived:
+        return [_out(w, user) for w in rows]
+    # Hide archived versions, except the newest one of an automation that has nothing else
+    # (a turned-off automation stays visible so it can be turned back on).
+    groups: dict[str, list] = {}
+    for w in rows:
+        groups.setdefault(w.group_id, []).append(w)
+    out = []
+    for versions in groups.values():
+        current = [w for w in versions if w.status != "archived"]
+        out.extend(current or [max(versions, key=lambda w: w.version)])
+    return [_out(w, user) for w in out]
+
+
+def _listable(user: User, wf: Workflow) -> bool:
+    """Visible, and - for people who cannot edit automations - only published versions."""
+    if not can_view(user, wf):
+        return False
+    return wf.status == "active" or has_permission(user, "workflow:write")
 
 
 @router.get("/{workflow_id}", response_model=WorkflowOut)
 def get_workflow(
     workflow_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("workflow:read"))
 ):
-    return _out(_get_visible(db, workflow_id, user), user)
+    wf = _get_visible(db, workflow_id, user)
+    if not _listable(user, wf):
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return _out(wf, user)
 
 
 @router.post("", response_model=WorkflowOut, status_code=201)
@@ -264,7 +285,7 @@ def run(
         raise HTTPException(status_code=409, detail="Only the active version of a workflow can be run")
     data = _checked_input(wf, body.input)
     enforce_rate_limit(db, user)
-    run_row = create_run(db, target=wf, user=user, source="api", input_data=data)
+    run_row = create_run(db, target=wf, user=user, source="form" if body.from_form else "api", input_data=data)
     audit(
         db,
         "workflow.run",

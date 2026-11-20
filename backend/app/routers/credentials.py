@@ -1,13 +1,18 @@
+import smtplib
+import ssl
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from .. import safe_http
 from ..audit import audit
 from ..crypto import decrypt_json, encrypt_json
 from ..database import get_db
 from ..models import Credential, User, Workflow
 from ..nodes import CREDENTIAL_TYPES
 from ..rbac import ROLE_LEVEL, can_view, get_current_user
-from ..schemas import CredentialIn, CredentialOut
+from ..schemas import CredentialIn, CredentialOut, CredentialTestOut
 from ..services.platform_settings import get_settings
 
 router = APIRouter(prefix="/api/credentials", tags=["connections"])
@@ -46,6 +51,13 @@ def _clean(ctype, data: dict, existing: dict | None = None) -> dict:
             value = f.default
         if f.required and value in (None, ""):
             raise HTTPException(status_code=400, detail=f"'{f.label}' is required")
+        if f.key == "url" and value not in (None, "") and not str(value).strip().lower().startswith("https://"):
+            raise HTTPException(status_code=400, detail=f"'{f.label}' must be a web address starting with https://")
+        if f.key == "port" and value not in (None, ""):
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail=f"'{f.label}' must be a number") from None
         if value not in (None, ""):
             result[f.key] = value
     return result
@@ -159,3 +171,52 @@ def usage(cred_id: int, db: Session = Depends(get_db), user: User = Depends(get_
         for w in rows
         if _uses(w.definition, cred_id)
     ]
+
+
+@router.post("/{cred_id}/test", response_model=CredentialTestOut)
+def test_credential(
+    cred_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Check a connection works: Slack/Teams get a short test message; email signs in to the server."""
+    cred = _get(db, cred_id, user)
+    data = decrypt_json(cred.data_encrypted)
+    ok, message = True, "Connected."
+    try:
+        if cred.type in ("slack_webhook", "teams_webhook"):
+            resp = safe_http.request(
+                "POST",
+                data["url"],
+                get_settings(db),
+                json_body={"text": "AgentOS test message: this connection works."},
+                trusted_host=True,
+                timeout=15,
+            )
+            ok = resp.status_code < 400
+            message = "Test message sent." if ok else f"The service answered HTTP {resp.status_code}."
+        elif cred.type == "smtp":
+            security = data.get("security") or "starttls"
+            server_cls = smtplib.SMTP_SSL if security == "ssl" else smtplib.SMTP
+            with server_cls(data["host"], int(data.get("port") or 587), timeout=15) as server:
+                if security == "starttls":
+                    server.starttls(context=ssl.create_default_context())
+                if data.get("username"):
+                    server.login(data["username"], data.get("password") or "")
+            message = "Signed in to the email server."
+        else:
+            message = "Saved. This kind of connection is checked when an automation uses it."
+    except safe_http.BlockedRequest as exc:
+        ok, message = False, str(exc)
+    except smtplib.SMTPAuthenticationError:
+        ok, message = False, "The email server rejected the username or password."
+    except (OSError, smtplib.SMTPException, httpx.HTTPError) as exc:
+        ok, message = False, f"Could not reach the server ({exc.__class__.__name__}). Check the address and port."
+    audit(
+        db,
+        "connection.test",
+        user=user,
+        resource_type="connection",
+        resource_id=cred.id,
+        status="success" if ok else "failure",
+        request=request,
+    )
+    return CredentialTestOut(ok=ok, message=message)

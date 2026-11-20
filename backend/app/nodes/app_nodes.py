@@ -164,8 +164,15 @@ def send_email(cfg: dict, ctx: NodeContext):
             if cred.get("username"):
                 server.login(cred["username"], cred.get("password") or "")
             server.send_message(msg)
+    except smtplib.SMTPAuthenticationError as exc:
+        raise NodeError("Email could not be sent: the email server rejected the username or password") from exc
+    except smtplib.SMTPRecipientsRefused as exc:
+        raise NodeError("Email could not be sent: the server refused the recipient address") from exc
     except (smtplib.SMTPException, OSError) as exc:
-        raise NodeError(f"Email could not be sent: {exc}") from exc
+        raise NodeError(
+            f"Email could not be sent: could not reach the email server '{host}:{port}' ({exc.__class__.__name__}). "
+            "Check the server name and port in the connection."
+        ) from exc
     return {"sent": True, "to": recipients + cc}
 
 

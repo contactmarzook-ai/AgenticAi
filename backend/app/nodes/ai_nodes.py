@@ -52,7 +52,7 @@ def ai_prompt(cfg: dict, ctx: NodeContext):
     "Summarize text in a chosen length and style.",
     "align-left",
     [
-        Field("text", "Text to summarize", "textarea", required=True, placeholder="{{node-1.body}}"),
+        Field("text", "Text to summarize", "textarea", required=True, placeholder="{{input.text}}"),
         Field(
             "length", "Length", "select", default="short", options=("one sentence", "short", "detailed bullet points")
         ),
