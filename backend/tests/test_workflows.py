@@ -69,13 +69,28 @@ def test_branching_skips_untaken_path_and_join_waits():
             node(
                 "cond",
                 "condition",
-                condition={"left": {"source": "input", "path": "amount"}, "operator": ">", "right": {"source": "static", "value": 1000}},
+                condition={
+                    "left": {"source": "input", "path": "amount"},
+                    "operator": ">",
+                    "right": {"source": "static", "value": 1000},
+                },
             ),
-            node("big", "agent", agent_id=1, mappings={"message": {"source": "template", "value": "big {{input.amount}}"}}),
+            node(
+                "big",
+                "agent",
+                agent_id=1,
+                mappings={"message": {"source": "template", "value": "big {{input.amount}}"}},
+            ),
             node("small", "agent", agent_id=2, mappings={"message": {"source": "static", "value": "small"}}),
             node("end", "end", mappings={"big": {"source": "node", "node_id": "big", "path": "answer"}}),
         ],
-        "edges": [edge("in", "cond"), edge("cond", "big", "true"), edge("cond", "small", "false"), edge("big", "end"), edge("small", "end")],
+        "edges": [
+            edge("in", "cond"),
+            edge("cond", "big", "true"),
+            edge("cond", "small", "false"),
+            edge("big", "end"),
+            edge("small", "end"),
+        ],
     }
     res = run_definition(definition, {"amount": 5000}, agent, tool_fn)
     assert calls == [(1, "big 5000")]
@@ -100,11 +115,21 @@ def test_join_runs_after_all_predecessors():
             node(
                 "join",
                 "transform",
-                mappings={"a": {"source": "node", "node_id": "a", "path": "answer"}, "b": {"source": "node", "node_id": "b2", "path": "answer"}},
+                mappings={
+                    "a": {"source": "node", "node_id": "a", "path": "answer"},
+                    "b": {"source": "node", "node_id": "b2", "path": "answer"},
+                },
             ),
             node("end", "end"),
         ],
-        "edges": [edge("in", "a"), edge("in", "b1"), edge("b1", "b2"), edge("a", "join"), edge("b2", "join"), edge("join", "end")],
+        "edges": [
+            edge("in", "a"),
+            edge("in", "b1"),
+            edge("b1", "b2"),
+            edge("a", "join"),
+            edge("b2", "join"),
+            edge("join", "end"),
+        ],
     }
     res = run_definition(definition, {}, agent, tool_fn)
     assert res["output"] == {"a": "1", "b": "2"}
@@ -153,15 +178,17 @@ def test_validator_reports_problems(client, admin):
     res = client.post(f"/api/workflows/{wf['id']}/validate", headers=admin).json()
     text = " | ".join(res["errors"])
     assert not res["is_valid"]
-    assert "does not exist" in text
-    assert "End node" in text
-    assert "'expression' is not mapped" in text
-    assert "select an agent" in text
+    assert "no longer exists" in text
+    assert "Finish step" in text
+    assert "'expression' is not set" in text
+    assert "choose an agent" in text
 
 
 def test_versioning_lifecycle(client, admin, llm):
     agent = create_agent(client, admin)
-    v1 = client.post("/api/workflows", headers=admin, json={"name": "Flow", "definition": simple_definition(agent["id"])}).json()
+    v1 = client.post(
+        "/api/workflows", headers=admin, json={"name": "Flow", "definition": simple_definition(agent["id"])}
+    ).json()
     assert v1["status"] == "draft" and v1["version"] == 1
 
     # Drafts are not runnable outside of test.
@@ -178,12 +205,16 @@ def test_versioning_lifecycle(client, admin, llm):
     assert v2["group_id"] == v1["group_id"] and v2["version"] == 2 and v2["status"] == "draft"
 
     client.post(f"/api/workflows/{v2['id']}/activate", headers=admin)
-    versions = {w["version"]: w["status"] for w in client.get(f"/api/workflows?group_id={v1['group_id']}", headers=admin).json()}
+    versions = {
+        w["version"]: w["status"] for w in client.get(f"/api/workflows?group_id={v1['group_id']}", headers=admin).json()
+    }
     assert versions == {1: "archived", 2: "active"}
 
 
 def test_activation_blocked_by_validation(client, admin):
-    wf = client.post("/api/workflows", headers=admin, json={"name": "Empty", "definition": {"nodes": [], "edges": []}}).json()
+    wf = client.post(
+        "/api/workflows", headers=admin, json={"name": "Empty", "definition": {"nodes": [], "edges": []}}
+    ).json()
     r = client.post(f"/api/workflows/{wf['id']}/activate", headers=admin)
     assert r.status_code == 400
     assert r.json()["detail"]["errors"]
@@ -192,9 +223,13 @@ def test_activation_blocked_by_validation(client, admin):
 def test_test_and_async_run(client, admin, llm):
     llm.handler = lambda messages, tools, json_mode: LLMResponse(content="echo:" + messages[-1]["content"])
     agent = create_agent(client, admin)
-    wf = client.post("/api/workflows", headers=admin, json={"name": "Flow", "definition": simple_definition(agent["id"])}).json()
+    wf = client.post(
+        "/api/workflows", headers=admin, json={"name": "Flow", "definition": simple_definition(agent["id"])}
+    ).json()
 
-    test_run = client.post(f"/api/workflows/{wf['id']}/test", headers=admin, json={"input": {"message": "hello"}}).json()
+    test_run = client.post(
+        f"/api/workflows/{wf['id']}/test", headers=admin, json={"input": {"message": "hello"}}
+    ).json()
     assert test_run["status"] == "succeeded", test_run
     assert test_run["output"]["result"] == {"answer": "echo:hello"}
     assert test_run["llm_calls"] == 1
@@ -226,5 +261,7 @@ def test_workflow_visibility(client, make_user):
         "/api/workflows", headers=builder, json={"name": "Private", "visibility": "private", "definition": {}}
     ).json()
     assert client.get(f"/api/workflows/{wf['id']}", headers=other).status_code == 404
-    r = client.post("/api/workflows", headers=other, json={"name": "hijack", "group_id": wf["group_id"], "definition": {}})
+    r = client.post(
+        "/api/workflows", headers=other, json={"name": "hijack", "group_id": wf["group_id"], "definition": {}}
+    )
     assert r.status_code == 404

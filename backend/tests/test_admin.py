@@ -9,7 +9,9 @@ def test_provider_and_model_admin(client, admin):
     )
     assert p.status_code == 201
     assert p.json()["base_url"] == "http://vllm:8000/v1"
-    bad = client.post("/api/models/providers", headers=admin, json={"name": "x", "base_url": "http://x", "api_key_env": "lower-case"})
+    bad = client.post(
+        "/api/models/providers", headers=admin, json={"name": "x", "base_url": "http://x", "api_key_env": "lower-case"}
+    )
     assert bad.status_code == 422  # env var names only; secrets are never stored
 
     m = client.post(

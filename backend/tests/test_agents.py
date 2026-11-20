@@ -30,7 +30,9 @@ def test_visibility_rules(client, make_user):
 
     # Hidden agents cannot be run either (the gap in the reference platform).
     for agent in (dept, private):
-        assert client.post(f"/api/agents/{agent['id']}/run", headers=other_dept, json={"message": "hi"}).status_code == 404
+        assert (
+            client.post(f"/api/agents/{agent['id']}/run", headers=other_dept, json={"message": "hi"}).status_code == 404
+        )
     assert client.post(f"/api/agents/{public['id']}/run", headers=other_dept, json={"message": "hi"}).status_code == 200
     # Users can run but not edit.
     assert client.put(f"/api/agents/{public['id']}", headers=same_dept, json={"name": "x"}).status_code == 403
@@ -60,7 +62,12 @@ def test_model_role_allowlist(client, admin, make_user):
     big = client.post(
         "/api/models",
         headers=admin,
-        json={"provider_id": providers[0]["id"], "model_name": "big", "display_name": "Big", "allowed_roles": ["admin"]},
+        json={
+            "provider_id": providers[0]["id"],
+            "model_name": "big",
+            "display_name": "Big",
+            "allowed_roles": ["admin"],
+        },
     ).json()
     builder = make_user("b@example.com", "builder")
     assert big["id"] not in {m["id"] for m in client.get("/api/models", headers=builder).json()}

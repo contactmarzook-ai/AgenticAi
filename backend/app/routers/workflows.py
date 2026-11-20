@@ -6,11 +6,17 @@ from ..audit import audit
 from ..database import get_db
 from ..models import Run, User, Workflow
 from ..rbac import can_edit, can_view, require_permission
-from ..schemas import RunOut, ValidationOut, WorkflowIn, WorkflowOut, WorkflowRunRequest
+from ..schemas import GenerateRequest, RunOut, ValidationOut, WorkflowIn, WorkflowOut, WorkflowRunRequest
+from ..services.ai_builder import BuilderError
+from ..services.ai_builder import generate as ai_generate
+from ..services.blueprint import to_definition
 from ..services.runs import create_run, enforce_rate_limit, execute_run, submit_run
+from ..services.templates_library import BY_KEY as TEMPLATES_BY_KEY
+from ..services.templates_library import TEMPLATES
 from ..services.workflow_validator import validate_definition
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+templates_router = APIRouter(prefix="/api/templates", tags=["templates"])
 
 
 def _out(wf: Workflow, user: User) -> WorkflowOut:
@@ -24,6 +30,10 @@ def _get_visible(db: Session, workflow_id: int, user: User) -> Workflow:
     if wf is None or not can_view(user, wf):
         raise HTTPException(status_code=404, detail="Workflow not found")
     return wf
+
+
+def _owner(db: Session, wf: Workflow) -> User | None:
+    return db.get(User, wf.owner_id) if wf.owner_id else None
 
 
 def _require_edit(user: User, wf: Workflow) -> None:
@@ -133,7 +143,7 @@ def validate(
     workflow_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("workflow:read"))
 ):
     wf = _get_visible(db, workflow_id, user)
-    errors = validate_definition(wf.definition, db)
+    errors = validate_definition(wf.definition, db, owner=_owner(db, wf))
     return ValidationOut(is_valid=not errors, errors=errors)
 
 
@@ -146,7 +156,7 @@ def activate(
 ):
     wf = _get_visible(db, workflow_id, user)
     _require_edit(user, wf)
-    errors = validate_definition(wf.definition, db)
+    errors = validate_definition(wf.definition, db, owner=_owner(db, wf))
     if errors:
         audit(
             db,
@@ -208,7 +218,7 @@ def test(
     """Run any version (including drafts) synchronously, for builders."""
     wf = _get_visible(db, workflow_id, user)
     _require_edit(user, wf)
-    errors = validate_definition(wf.definition, db)
+    errors = validate_definition(wf.definition, db, owner=_owner(db, wf))
     if errors:
         raise HTTPException(status_code=400, detail={"message": "Validation failed", "errors": errors})
     enforce_rate_limit(db, user)
@@ -254,3 +264,70 @@ def run(
     )
     submit_run(run_row.id)
     return run_row
+
+
+# ---------------- templates & AI builder ----------------
+@templates_router.get("")
+def list_templates(user: User = Depends(require_permission("workflow:read"))):
+    return [
+        {k: t[k] for k in ("key", "name", "category", "description", "needs")} | {"steps": len(t["steps"])}
+        for t in TEMPLATES
+    ]
+
+
+@templates_router.post("/{key}/use", response_model=WorkflowOut, status_code=201)
+def use_template(
+    key: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow:write")),
+):
+    tpl = TEMPLATES_BY_KEY.get(key)
+    if tpl is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    wf = Workflow(
+        name=tpl["name"],
+        description=tpl["description"],
+        definition=to_definition(tpl),
+        status="draft",
+        visibility="private",
+        department=user.department,
+        owner_id=user.id,
+    )
+    db.add(wf)
+    db.flush()
+    audit(
+        db,
+        "workflow.create",
+        user=user,
+        resource_type="workflow",
+        resource_id=wf.id,
+        details={"name": wf.name, "template": key},
+        request=request,
+    )
+    db.refresh(wf)
+    return _out(wf, user)
+
+
+@router.post("/generate")
+def generate_workflow(
+    body: GenerateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow:write")),
+):
+    """Draft a workflow from a description. Nothing is saved; the builder shows it for review."""
+    enforce_rate_limit(db, user)
+    try:
+        result = ai_generate(db, user, body.prompt)
+    except BuilderError as exc:
+        audit(db, "workflow.generate", user=user, status="failure", details={"error": str(exc)[:300]}, request=request)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    audit(
+        db,
+        "workflow.generate",
+        user=user,
+        details={"name": result["name"], "steps": len(result["definition"]["nodes"])},
+        request=request,
+    )
+    return result

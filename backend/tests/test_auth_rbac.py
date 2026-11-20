@@ -54,7 +54,10 @@ def test_user_cannot_use_admin_or_builder_endpoints(client, make_user):
 def test_builder_cannot_manage_users_or_models(client, make_user):
     builder = make_user("b@example.com", "builder")
     assert client.get("/api/admin/users", headers=builder).status_code == 403
-    assert client.post("/api/models/providers", headers=builder, json={"name": "x", "base_url": "http://x"}).status_code == 403
+    assert (
+        client.post("/api/models/providers", headers=builder, json={"name": "x", "base_url": "http://x"}).status_code
+        == 403
+    )
     assert client.get("/api/models", headers=builder).status_code == 200
 
 
@@ -69,7 +72,9 @@ def test_role_change_invalidates_old_token(client, admin, make_user):
 
 def test_deactivated_user_cannot_login(client, admin, make_user):
     make_user("gone@example.com")
-    uid = next(u["id"] for u in client.get("/api/admin/users", headers=admin).json() if u["email"] == "gone@example.com")
+    uid = next(
+        u["id"] for u in client.get("/api/admin/users", headers=admin).json() if u["email"] == "gone@example.com"
+    )
     client.patch(f"/api/admin/users/{uid}", headers=admin, json={"is_active": False})
     r = client.post("/api/auth/login", json={"email": "gone@example.com", "password": PASSWORD})
     assert r.status_code == 401

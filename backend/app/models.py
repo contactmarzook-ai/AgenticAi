@@ -214,3 +214,29 @@ class AuditLog(Base):
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class Credential(Base):
+    """A saved connection (SMTP account, Slack webhook, API key...). Secrets are encrypted at rest."""
+
+    __tablename__ = "credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    type: Mapped[str] = mapped_column(String(50), index=True)
+    data_encrypted: Mapped[str] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(String(20), default="private")  # private | department | public
+    department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class PlatformSetting(Base):
+    """Admin-controlled platform settings (one JSON document per key)."""
+
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

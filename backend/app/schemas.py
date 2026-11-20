@@ -149,8 +149,14 @@ class AgentOut(ORM):
     can_edit: bool = False
 
 
+def _no_nul(v: str) -> str:
+    # PostgreSQL text columns cannot store NUL characters.
+    return v.replace("\x00", "")
+
+
 class AgentRunRequest(BaseModel):
     message: str = Field(min_length=1)
+    _clean = field_validator("message")(classmethod(lambda cls, v: _no_nul(v)))
 
 
 # ---------- workflows ----------
@@ -285,6 +291,7 @@ class ChatMessageOut(ORM):
 
 class ChatSend(BaseModel):
     message: str = Field(min_length=1)
+    _clean = field_validator("message")(classmethod(lambda cls, v: _no_nul(v)))
 
 
 # ---------- audit ----------
@@ -305,3 +312,40 @@ class AuditOut(ORM):
 class Page(BaseModel):
     items: list[Any]
     total: int
+
+
+# ---------- node catalog / connections / settings ----------
+class CredentialIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    type: str = Field(max_length=50)
+    # Field values. On update, omitted or empty secret fields keep their saved value.
+    data: dict[str, Any] = {}
+    visibility: Visibility = "private"
+
+
+class CredentialOut(ORM):
+    id: int
+    name: str
+    type: str
+    visibility: str
+    department: Optional[str]
+    owner_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+    # Non-secret field values only; secrets are never returned.
+    public_data: dict = {}
+    can_edit: bool = False
+
+
+class SettingsIn(BaseModel):
+    disabled_nodes: Optional[list[str]] = None
+    http_allowed_hosts: Optional[list[str]] = None
+    allow_private_network: Optional[bool] = None
+    connections_min_role: Optional[Literal["builder", "admin"]] = None
+    ai_builder_enabled: Optional[bool] = None
+    max_wait_seconds: Optional[int] = Field(default=None, ge=0, le=3600)
+
+
+class GenerateRequest(BaseModel):
+    prompt: str = Field(min_length=5, max_length=4000)
+    _clean = field_validator("prompt")(classmethod(lambda cls, v: _no_nul(v)))

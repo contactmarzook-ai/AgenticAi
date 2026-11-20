@@ -25,6 +25,7 @@ def _list(name: str, default: str = "") -> list[str]:
 
 
 DEV_JWT_SECRET = "dev-only-insecure-secret-change-me"
+DEV_CREDENTIALS_KEY = "dev-only-insecure-credentials-key"
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,8 @@ class Settings:
 
     # Auth
     jwt_secret: str = field(default_factory=lambda: os.getenv("JWT_SECRET", DEV_JWT_SECRET))
+    # Encrypts saved connection secrets. Changing it makes existing connections unreadable.
+    credentials_key: str = field(default_factory=lambda: os.getenv("CREDENTIALS_KEY", DEV_CREDENTIALS_KEY))
     jwt_expire_minutes: int = field(default_factory=lambda: _int("JWT_EXPIRE_MINUTES", 480))
     login_max_attempts: int = field(default_factory=lambda: _int("LOGIN_MAX_ATTEMPTS", 5))
     login_lockout_minutes: int = field(default_factory=lambda: _int("LOGIN_LOCKOUT_MINUTES", 15))
@@ -82,6 +85,8 @@ class Settings:
         problems = []
         if self.jwt_secret == DEV_JWT_SECRET or len(self.jwt_secret) < 32:
             problems.append("JWT_SECRET must be set to a random value of at least 32 characters")
+        if self.credentials_key == DEV_CREDENTIALS_KEY or len(self.credentials_key) < 32:
+            problems.append("CREDENTIALS_KEY must be set to a random value of at least 32 characters")
         if self.database_url.startswith("sqlite"):
             problems.append("DATABASE_URL must point to PostgreSQL in production")
         if self.auto_create_tables:

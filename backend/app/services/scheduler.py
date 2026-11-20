@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
 from ..models import Trigger, User, Workflow
+from ..rbac import can_view, has_permission
 from .runs import create_run, execute_run, fail_stale_runs
 
 logger = logging.getLogger("agentos.scheduler")
@@ -56,6 +57,10 @@ def start_trigger_run(db: Session, trigger: Trigger, input_data: dict, source: s
     owner = db.get(User, trigger.owner_id) if trigger.owner_id else None
     if owner is None or not owner.is_active:
         logger.warning("Trigger %s skipped: owner missing or deactivated", trigger.id)
+        return None
+    # The owner must still be allowed to manage triggers and to see this workflow.
+    if not has_permission(owner, "trigger:write") or not can_view(owner, wf):
+        logger.warning("Trigger %s skipped: owner no longer has access to the workflow", trigger.id)
         return None
     return create_run(db, target=wf, user=owner, source=source, input_data=input_data, trigger_id=trigger.id)
 

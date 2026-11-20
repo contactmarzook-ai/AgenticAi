@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..audit import audit
@@ -38,18 +39,37 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         audit(db, "auth.login", user_email=email, status="failure", details={"reason": "unknown_user"}, request=request)
         raise invalid
 
+    locked = "Account temporarily locked after repeated failed logins. Try again later."
     if user.locked_until and _aware(user.locked_until) > now:
         audit(db, "auth.login", user=user, status="denied", details={"reason": "locked"}, request=request)
-        raise HTTPException(
-            status_code=423, detail="Account temporarily locked after repeated failed logins. Try again later."
+        raise HTTPException(status_code=423, detail=locked)
+    if user.locked_until:
+        # The lock has expired: start counting again (only one concurrent request performs the reset).
+        db.execute(
+            update(User)
+            .where(User.id == user.id, User.locked_until == user.locked_until)
+            .values(failed_login_count=0, locked_until=None)
         )
+        db.commit()
+
+    # Count this attempt atomically BEFORE checking the password, so parallel guesses
+    # (across threads and replicas) cannot slip past the limit. The counter is only reset by
+    # a successful login or an expired lock.
+    db.execute(update(User).where(User.id == user.id).values(failed_login_count=User.failed_login_count + 1))
+    db.commit()
+    db.refresh(user)
+    attempts = user.failed_login_count
+
+    if attempts > settings.login_max_attempts:
+        if not user.locked_until:
+            user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
+        audit(db, "auth.login", user=user, status="denied", details={"reason": "too_many_attempts"}, request=request)
+        raise HTTPException(status_code=423, detail=locked)
 
     if not verify_password(body.password, user.password_hash):
-        user.failed_login_count = (user.failed_login_count or 0) + 1
-        details = {"reason": "bad_password", "failed_count": user.failed_login_count}
-        if user.failed_login_count >= settings.login_max_attempts:
+        details = {"reason": "bad_password", "failed_count": attempts}
+        if attempts >= settings.login_max_attempts:
             user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
-            user.failed_login_count = 0
             details["locked"] = True
         audit(db, "auth.login", user=user, status="failure", details=details, request=request)
         raise invalid

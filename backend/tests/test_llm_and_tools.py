@@ -27,7 +27,9 @@ def test_request_shape_and_tool_call_parsing():
                     {
                         "message": {
                             "content": None,
-                            "tool_calls": [{"id": "x1", "function": {"name": "calculator", "arguments": {"expression": "1+1"}}}],
+                            "tool_calls": [
+                                {"id": "x1", "function": {"name": "calculator", "arguments": {"expression": "1+1"}}}
+                            ],
                         }
                     }
                 ],
@@ -95,7 +97,9 @@ def test_schema_validation():
 
 
 def test_render_template():
-    out = registry.execute("render_template", {"template": "Dear $name, you owe $amt", "values": {"name": "A", "amt": 5}})
+    out = registry.execute(
+        "render_template", {"template": "Dear $name, you owe $amt", "values": {"name": "A", "amt": 5}}
+    )
     assert out["text"] == "Dear A, you owe 5"
 
 
@@ -105,14 +109,15 @@ def test_http_get_disabled_without_allowlist():
     assert "disabled" in str(exc.value)
 
 
-def test_http_get_enforces_allowlist(monkeypatch):
-    import dataclasses
+def test_http_get_enforces_allowlist():
+    from app.database import SessionLocal
+    from app.services.platform_settings import save_settings
 
-    from app.tools import builtin
-
-    monkeypatch.setattr(builtin, "settings", dataclasses.replace(builtin.settings, http_tool_allowed_hosts=["api.example.com"]))
+    db = SessionLocal()
+    save_settings(db, {"http_allowed_hosts": ["api.example.com"]})
+    db.close()
     with pytest.raises(registry.ToolError) as exc:
         registry.execute("http_get", {"url": "http://evil.example.org/"})
-    assert "not on the allowlist" in str(exc.value)
+    assert "not on the allowed list" in str(exc.value)
     with pytest.raises(registry.ToolError):
         registry.execute("http_get", {"url": "file:///etc/passwd"})

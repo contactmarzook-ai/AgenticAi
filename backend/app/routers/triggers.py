@@ -1,4 +1,5 @@
 import hmac
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -49,7 +50,8 @@ def _visible_trigger(db: Session, trigger_id: int, user: User) -> Trigger:
     if trig is None:
         raise HTTPException(status_code=404, detail="Trigger not found")
     wf = _latest(db, trig.workflow_group_id)
-    if user.role != "admin" and trig.owner_id != user.id and not (wf and can_edit(user, wf)):
+    owns = trig.owner_id == user.id and wf is not None and can_view(user, wf)
+    if user.role != "admin" and not owns and not (wf and can_edit(user, wf)):
         raise HTTPException(status_code=404, detail="Trigger not found")
     return trig
 
@@ -66,7 +68,7 @@ def list_triggers(
     out = []
     for trig in q.order_by(Trigger.id).all():
         wf = _latest(db, trig.workflow_group_id)
-        if user.role == "admin" or trig.owner_id == user.id or (wf and can_edit(user, wf)):
+        if user.role == "admin" or (wf and (can_edit(user, wf) or (trig.owner_id == user.id and can_view(user, wf)))):
             out.append(trig)
     return out
 
@@ -167,9 +169,17 @@ def delete_trigger(
     return {"status": "deleted"}
 
 
+async def _raw_body(request: Request) -> bytes:
+    return await request.body()
+
+
 @hooks.post("/{trigger_id}", response_model=RunOut, status_code=202)
-async def receive_webhook(
-    trigger_id: int, request: Request, db: Session = Depends(get_db), x_webhook_token: str = Header(default="")
+def receive_webhook(
+    trigger_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    x_webhook_token: str = Header(default=""),
+    raw: bytes = Depends(_raw_body),
 ):
     """Start the trigger's active workflow. Authenticate with header `X-Webhook-Token`.
     The JSON body (an object) is merged over the trigger's default input."""
@@ -185,13 +195,12 @@ async def receive_webhook(
         audit(db, "webhook.receive", resource_type="trigger", resource_id=trigger_id, status="denied", request=request)
         raise HTTPException(status_code=404, detail="Not found")
 
-    raw = await request.body()
     if len(raw) > MAX_WEBHOOK_BODY_BYTES:
         raise HTTPException(status_code=413, detail="Payload too large")
     payload: Any = {}
-    if raw:
+    if raw.strip():
         try:
-            payload = await request.json()
+            payload = json.loads(raw)
         except ValueError:
             raise HTTPException(status_code=400, detail="Body must be JSON")
         if not isinstance(payload, dict):
@@ -199,7 +208,7 @@ async def receive_webhook(
 
     run = start_trigger_run(db, trig, {**(trig.input or {}), **payload}, "webhook")
     if run is None:
-        raise HTTPException(status_code=409, detail="Workflow has no active version or the trigger owner is inactive")
+        raise HTTPException(status_code=409, detail="Workflow has no active version or the trigger owner lost access")
     trig.last_run_at = utcnow()
     audit(
         db,

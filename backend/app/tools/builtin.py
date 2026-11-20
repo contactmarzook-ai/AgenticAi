@@ -4,12 +4,10 @@ import ast
 import operator
 import string
 from datetime import datetime
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
-from ..config import settings
 from .registry import ToolError, tool
 
 
@@ -113,16 +111,20 @@ def render_template(template: str, values: dict) -> dict:
     min_role="builder",
 )
 def http_get(url: str) -> dict:
-    allowed = {h.lower() for h in settings.http_tool_allowed_hosts}
-    if not allowed:
-        raise ToolError("http_get is disabled: HTTP_TOOL_ALLOWED_HOSTS is empty")
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise ToolError("Only http(s) URLs are allowed")
-    if parsed.hostname.lower() not in allowed:
-        raise ToolError(f"Host '{parsed.hostname}' is not on the allowlist")
-    # No redirects: a redirect could leave the allowlist.
-    with httpx.Client(timeout=15, follow_redirects=False) as http:
-        resp = http.get(url, headers={"User-Agent": "AgentOS-http_get/1.0"})
-    body = resp.text[:10_000]
-    return {"status_code": resp.status_code, "content_type": resp.headers.get("content-type", ""), "body": body}
+    from .. import safe_http
+    from ..services.platform_settings import get_settings
+
+    platform = get_settings()
+    if not platform.get("http_allowed_hosts"):
+        raise ToolError("http_get is disabled: no allowed hosts are configured (Settings > Outbound HTTP)")
+    try:
+        resp = safe_http.request("GET", url, platform, headers={"User-Agent": "AgentOS-http_get/1.0"}, timeout=15)
+    except safe_http.BlockedRequest as exc:
+        raise ToolError(str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise ToolError(f"Request failed: {exc.__class__.__name__}") from exc
+    return {
+        "status_code": resp.status_code,
+        "content_type": resp.headers.get("content-type", ""),
+        "body": resp.text[:10_000],
+    }

@@ -15,10 +15,16 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..crypto import decrypt_json
 from ..database import SessionLocal
-from ..models import Agent, Run, User, Workflow
+from ..llm.client import LLMError, get_llm_client
+from ..models import Agent, Credential, Run, User, Workflow
+from ..nodes import NodeContext, NodeError, get_node_type
+from ..rbac import can_view
 from ..tools import registry
 from .agent_runtime import AgentRunError, run_agent
+from .models_service import ModelNotAvailable, resolve_model, to_target
+from .platform_settings import get_settings
 from .workflow_engine import WorkflowError, run_definition
 
 logger = logging.getLogger("agentos.runs")
@@ -69,30 +75,25 @@ def _history_for(input_data: dict) -> list[dict]:
     return [m for m in hist if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
 
 
-def _execute(db: Session, run: Run) -> None:
+def _ask_llm_factory(db: Session, role: str, usage: dict):
+    def ask_llm(messages: list[dict], json_mode: bool = False, model_id: Optional[int] = None) -> dict:
+        try:
+            model = resolve_model(db, model_id, role)
+            resp = get_llm_client().chat(to_target(model), messages, temperature=0.2, json_mode=json_mode)
+        except (ModelNotAvailable, LLMError) as exc:
+            raise NodeError(str(exc)) from exc
+        usage["prompt"] += resp.prompt_tokens
+        usage["completion"] += resp.completion_tokens
+        usage["calls"] += 1
+        usage["model"] = model.model_name
+        return {"text": resp.content}
+
+    return ask_llm
+
+
+def _execute(db: Session, run: Run, usage: dict) -> None:
     user = db.get(User, run.user_id) if run.user_id else None
     role = user.role if user and user.is_active else "user"
-    usage = {"prompt": 0, "completion": 0, "calls": 0, "model": None}
-
-    def call_agent(agent_id: int, message: str) -> dict:
-        agent = db.get(Agent, agent_id)
-        if agent is None:
-            raise WorkflowError(f"Agent {agent_id} not found")
-        try:
-            res = run_agent(db, agent, message, role)
-        except AgentRunError as exc:
-            raise WorkflowError(str(exc)) from exc
-        usage["prompt"] += res.prompt_tokens
-        usage["completion"] += res.completion_tokens
-        usage["calls"] += res.llm_calls
-        usage["model"] = res.model_name
-        return {"answer": res.answer, "agent": agent.name, "steps": len(res.steps)}
-
-    def call_tool(name: str, args: dict):
-        try:
-            return registry.execute(name, args)
-        except registry.ToolError as exc:
-            raise WorkflowError(str(exc)) from exc
 
     if run.target_type == "agent":
         agent = db.get(Agent, run.target_id)
@@ -104,23 +105,73 @@ def _execute(db: Session, run: Run) -> None:
         usage.update(
             prompt=res.prompt_tokens, completion=res.completion_tokens, calls=res.llm_calls, model=res.model_name
         )
-    else:
-        wf = db.get(Workflow, run.target_id)
-        if wf is None:
-            raise WorkflowError("Workflow no longer exists")
-        try:
-            res = run_definition(wf.definition or {}, run.input or {}, call_agent, call_tool)
-        finally:
-            run.prompt_tokens, run.completion_tokens, run.llm_calls = (
-                usage["prompt"],
-                usage["completion"],
-                usage["calls"],
-            )
-        run.output = {"result": res["output"]}
-        run.steps = res["steps"]
+        return
 
-    run.prompt_tokens, run.completion_tokens, run.llm_calls = usage["prompt"], usage["completion"], usage["calls"]
-    run.model_name = usage["model"]
+    wf = db.get(Workflow, run.target_id)
+    if wf is None:
+        raise WorkflowError("Workflow no longer exists")
+    # Agents and connections are used with the workflow OWNER's access: whoever runs a shared
+    # workflow can only reach what its author was allowed to use.
+    owner = db.get(User, wf.owner_id) if wf.owner_id else None
+    if owner is not None and not owner.is_active:
+        owner = None
+
+    def call_agent(agent_id: int, message: str) -> dict:
+        agent = db.get(Agent, agent_id)
+        if agent is None or owner is None or not can_view(owner, agent):
+            raise NodeError("This agent is not available to the workflow's owner")
+        try:
+            res = run_agent(db, agent, message, role)
+        except AgentRunError as exc:
+            raise NodeError(str(exc)) from exc
+        usage["prompt"] += res.prompt_tokens
+        usage["completion"] += res.completion_tokens
+        usage["calls"] += res.llm_calls
+        usage["model"] = res.model_name
+        return {"answer": res.answer, "agent": agent.name}
+
+    def get_credential(cred_id, expected_type: str) -> dict:
+        try:
+            cred = db.get(Credential, int(cred_id))
+        except (TypeError, ValueError):
+            cred = None
+        if cred is None or owner is None or not can_view(owner, cred):
+            raise NodeError("The selected connection is missing or not shared with the workflow's owner")
+        if cred.type != expected_type:
+            raise NodeError(f"The selected connection is not of type {expected_type}")
+        try:
+            return decrypt_json(cred.data_encrypted)
+        except ValueError as exc:
+            raise NodeError(str(exc)) from exc
+
+    platform = get_settings(db)
+    ctx = NodeContext(
+        role=role,
+        get_credential=get_credential,
+        ask_llm=_ask_llm_factory(db, role, usage),
+        run_agent=call_agent,
+        settings=platform,
+    )
+    disabled = set(platform.get("disabled_nodes") or [])
+
+    def call_action(key: str, config: dict, node: dict):
+        ntype = get_node_type(key)
+        if ntype is None:
+            raise NodeError(f"Unknown step '{key}'")
+        if key in disabled:
+            raise NodeError(f"'{ntype.name}' steps are disabled by your administrator")
+        values = {f.key: config.get(f.key, f.default) for f in ntype.fields}
+        return ntype.handler(values, ctx)
+
+    def call_tool(name: str, args: dict):
+        try:
+            return registry.execute(name, args)
+        except registry.ToolError as exc:
+            raise NodeError(str(exc)) from exc
+
+    res = run_definition(wf.definition or {}, run.input or {}, call_agent, call_tool, call_action)
+    run.output = {"result": res["output"]}
+    run.steps = res["steps"]
 
 
 def execute_run(run_id: int) -> None:
@@ -133,8 +184,9 @@ def execute_run(run_id: int) -> None:
         run.status = "running"
         run.started_at = utcnow()
         db.commit()
+        usage = {"prompt": 0, "completion": 0, "calls": 0, "model": None}
         try:
-            _execute(db, run)
+            _execute(db, run, usage)
             run.status = "succeeded"
         except (AgentRunError, WorkflowError) as exc:
             db.rollback()
@@ -149,6 +201,8 @@ def execute_run(run_id: int) -> None:
             run = db.get(Run, run_id)
             run.status = "failed"
             run.error = f"Internal error ({exc.__class__.__name__})"
+        run.prompt_tokens, run.completion_tokens, run.llm_calls = usage["prompt"], usage["completion"], usage["calls"]
+        run.model_name = usage["model"]
         run.finished_at = utcnow()
         db.commit()
     finally:

@@ -17,12 +17,17 @@ from .routers import (
     agents,
     auth,
     chat,
+    credentials,
     llm_models,
+    nodes,
     runs,
     tools,
     triggers,
     users,
     workflows,
+)
+from .routers import (
+    settings as settings_router,
 )
 
 logger = logging.getLogger("agentos.http")
@@ -86,9 +91,24 @@ def create_app() -> FastAPI:
             )
         return response
 
-    for module in (auth, users, llm_models, tools, agents, workflows, runs, triggers, chat, admin):
+    for module in (
+        auth,
+        users,
+        llm_models,
+        tools,
+        agents,
+        workflows,
+        runs,
+        triggers,
+        chat,
+        admin,
+        nodes,
+        credentials,
+        settings_router,
+    ):
         app.include_router(module.router)
     app.include_router(triggers.hooks)
+    app.include_router(workflows.templates_router)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():

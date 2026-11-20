@@ -39,6 +39,7 @@ _ROLE_PERMISSIONS: dict[str, set[str]] = {
         "audit:read",
         "monitoring:read",
         "run:read_all",
+        "settings:manage",
     },
 }
 

@@ -28,6 +28,7 @@ from app.bootstrap import seed  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.llm.client import LLMClient, LLMResponse, ToolCall, set_llm_client  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.platform_settings import invalidate as invalidate_settings  # noqa: E402
 
 ADMIN = ("admin@example.com", "Admin#Passw0rd!")
 PASSWORD = "Str0ng#Password"
@@ -42,7 +43,9 @@ class FakeLLM(LLMClient):
         self.handler: Callable = lambda messages, tools, json_mode: LLMResponse(content="fake answer")
 
     def chat(self, target, messages, tools=None, temperature=0.2, json_mode=False):
-        self.calls.append({"model": target.model_name, "messages": list(messages), "tools": tools, "json_mode": json_mode})
+        self.calls.append(
+            {"model": target.model_name, "messages": list(messages), "tools": tools, "json_mode": json_mode}
+        )
         resp = self.handler(messages, tools, json_mode)
         resp.prompt_tokens = resp.prompt_tokens or 10
         resp.completion_tokens = resp.completion_tokens or 5
@@ -60,6 +63,7 @@ def fresh_db():
     db = SessionLocal()
     seed(db)
     db.close()
+    invalidate_settings()
     yield
 
 

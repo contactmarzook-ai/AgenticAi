@@ -1,106 +1,187 @@
-"""Static checks run before a workflow version can be activated or tested."""
+"""Checks run before a workflow is tested or activated. Messages are written for non-technical users."""
 
+from typing import Any, Optional
+
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Agent
+from ..models import Agent, Credential, User
+from ..nodes import NODE_TYPES
+from ..rbac import can_view
 from ..tools import registry
+from .platform_settings import get_settings
 from .workflow_engine import WorkflowError, edge_branch, topological_order
 
-NODE_TYPES = {"input", "agent", "tool", "condition", "transform", "end"}
+NODE_TYPES_ALLOWED = {"input", "action", "condition", "switch", "end", "agent", "tool", "transform"}
+OPERATORS = {"==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", "starts_with", "is_empty", "not_empty"}
 MAPPING_SOURCES = {"static", "input", "workflow", "node", "template"}
 
 
-def validate_definition(definition: dict, db: Session) -> list[str]:
-    errors: list[str] = []
+class _Node(BaseModel):
+    id: str
+    type: str
+    data: dict = {}
+
+
+class _Edge(BaseModel):
+    id: Optional[Any] = None
+    source: str
+    target: str
+    sourceHandle: Optional[str] = None
+    label: Optional[Any] = None
+
+
+def _empty(v: Any) -> bool:
+    return v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, (list, dict)) and not v)
+
+
+def _credential_ok(db: Session, owner: Optional[User], cred_id: Any, allowed_types: set[str]) -> Optional[str]:
+    try:
+        cred = db.get(Credential, int(cred_id))
+    except (TypeError, ValueError):
+        cred = None
+    if cred is None:
+        return "the selected connection no longer exists"
+    if cred.type not in allowed_types:
+        return "the selected connection is the wrong kind"
+    if owner is not None and not can_view(owner, cred):
+        return "the workflow owner does not have access to the selected connection"
+    return None
+
+
+def _agent_ok(db: Session, owner: Optional[User], agent_id: Any) -> Optional[str]:
+    agent = db.get(Agent, int(agent_id)) if str(agent_id or "").isdigit() else None
+    if agent is None or (owner is not None and not can_view(owner, agent)):
+        return "choose an agent"
+    if not agent.is_active:
+        return f"agent '{agent.name}' is disabled"
+    return None
+
+
+def validate_definition(definition: Any, db: Session, owner: Optional[User] = None) -> list[str]:
     if not isinstance(definition, dict):
-        return ["Definition must be an object with nodes and edges"]
-    nodes = definition.get("nodes") or []
-    edges = definition.get("edges") or []
+        return ["The workflow is not in a valid format"]
+    try:
+        nodes = [_Node.model_validate(n) for n in (definition.get("nodes") or [])]
+        edges = [_Edge.model_validate(e) for e in (definition.get("edges") or [])]
+    except (ValidationError, TypeError):
+        return ["The workflow is not in a valid format (steps or connections are malformed)"]
+
     if not nodes:
-        return ["Workflow must have at least one node"]
+        return ["Add at least one step"]
+    errors: list[str] = []
     if len(nodes) > settings.workflow_max_nodes:
-        errors.append(f"Workflow has {len(nodes)} nodes; the limit is {settings.workflow_max_nodes}")
+        errors.append(f"The workflow has {len(nodes)} steps; the limit is {settings.workflow_max_nodes}")
 
-    ids = [n.get("id") for n in nodes]
-    if any(not i for i in ids):
-        return ["Every node needs an id"]
+    ids = [n.id for n in nodes]
     if len(set(ids)) != len(ids):
-        errors.append("Node ids must be unique")
-    by_id = {n["id"]: n for n in nodes}
+        errors.append("Two steps have the same id")
+    by_id = {n.id: n for n in nodes}
+    bad_edges = [e for e in edges if e.source not in by_id or e.target not in by_id]
+    if bad_edges:
+        errors.append("A connection points to a step that no longer exists - remove it")
+    edges = [e for e in edges if e.source in by_id and e.target in by_id]
 
-    for e in edges:
-        if e.get("source") not in by_id or e.get("target") not in by_id:
-            errors.append(f"Edge {e.get('id', '?')} points to a node that does not exist")
-    edges = [e for e in edges if e.get("source") in by_id and e.get("target") in by_id]
+    starts = [n for n in nodes if n.type == "input"]
+    if len(starts) != 1:
+        errors.append("The workflow needs exactly one Start step")
+    if not any(n.type == "end" for n in nodes):
+        errors.append("Add a Finish step")
 
-    inputs = [n for n in nodes if n.get("type") == "input"]
-    ends = [n for n in nodes if n.get("type") == "end"]
-    if len(inputs) != 1:
-        errors.append("Workflow must have exactly one Input node")
-    if not ends:
-        errors.append("Workflow must have at least one End node")
+    has_in = {e.target for e in edges}
+    has_out = {e.source for e in edges}
+    platform = get_settings(db)
+    disabled = set(platform.get("disabled_nodes") or [])
 
-    has_in = {e["target"] for e in edges}
-    has_out = {e["source"] for e in edges}
-
-    for node in nodes:
-        nid, ntype, data = node["id"], node.get("type"), node.get("data") or {}
-        label = f"{data.get('label') or ntype} ({nid})"
-        if ntype not in NODE_TYPES:
-            errors.append(f"{label}: unknown node type '{ntype}'")
+    for n in nodes:
+        data = n.data or {}
+        label = f"'{data.get('label') or n.type}'"
+        if n.type not in NODE_TYPES_ALLOWED:
+            errors.append(f"{label}: unknown step type")
             continue
-        if ntype == "input" and nid in has_in:
-            errors.append(f"{label}: the Input node cannot have incoming connections")
-        if ntype != "input" and nid not in has_in:
-            errors.append(f"{label}: not connected to anything before it")
-        if ntype != "end" and nid not in has_out:
-            errors.append(f"{label}: not connected to anything after it")
+        if n.type == "input" and n.id in has_in:
+            errors.append(f"{label}: nothing can lead into the Start step")
+        if n.type != "input" and n.id not in has_in:
+            errors.append(f"{label}: not connected to a previous step")
+        if n.type != "end" and n.id not in has_out:
+            errors.append(f"{label}: not connected to a next step")
 
-        for key, m in (data.get("mappings") or {}).items():
-            if not isinstance(m, dict) or m.get("source") not in MAPPING_SOURCES:
-                errors.append(f"{label}: mapping '{key}' has an invalid source")
-            elif m.get("source") == "node" and m.get("node_id") not in by_id:
-                errors.append(f"{label}: mapping '{key}' reads from a node that does not exist")
-
-        if ntype == "agent":
-            agent_id = data.get("agent_id")
-            agent = db.get(Agent, int(agent_id)) if str(agent_id or "").isdigit() else None
-            if agent is None:
-                errors.append(f"{label}: select an agent")
-            elif not agent.is_active:
-                errors.append(f"{label}: agent '{agent.name}' is disabled")
-        elif ntype == "tool":
+        if n.type == "action":
+            ntype = NODE_TYPES.get(str(data.get("action") or ""))
+            if ntype is None:
+                errors.append(f"{label}: choose what this step does")
+                continue
+            if ntype.key in disabled:
+                errors.append(f"{label}: '{ntype.name}' steps are disabled by your administrator")
+            config = data.get("config") or {}
+            if not isinstance(config, dict):
+                errors.append(f"{label}: settings are malformed")
+                continue
+            for f in ntype.fields:
+                value = config.get(f.key, f.default)
+                if f.required and _empty(value):
+                    errors.append(f"{label}: fill in '{f.label}'")
+                elif f.type == "credential" and not _empty(value):
+                    problem = _credential_ok(db, owner, value, set((f.credential_type or "").split("|")))
+                    if problem:
+                        errors.append(f"{label}: {problem}")
+                elif f.type == "agent" and not _empty(value):
+                    problem = _agent_ok(db, owner, value)
+                    if problem:
+                        errors.append(f"{label}: {problem}")
+        elif n.type == "condition":
+            cond = data.get("condition") or {}
+            if not isinstance(cond, dict) or cond.get("operator") not in OPERATORS:
+                errors.append(f"{label}: choose how to compare")
+            for e in edges:
+                if e.source == n.id and edge_branch(e.model_dump()) not in ("true", "false"):
+                    errors.append(f"{label}: connect from the Yes or No handle")
+                    break
+        elif n.type == "switch":
+            cases = data.get("cases") or []
+            if not isinstance(cases, list) or not [c for c in cases if str(c).strip()]:
+                errors.append(f"{label}: add at least one case")
+            valid = {str(c).strip().lower() for c in cases if str(c).strip()} | {"default"}
+            for e in edges:
+                if e.source == n.id and edge_branch(e.model_dump()) not in valid:
+                    errors.append(f"{label}: a connection leaves from a case that no longer exists")
+                    break
+        elif n.type == "agent":
+            problem = _agent_ok(db, owner, data.get("agent_id"))
+            if problem:
+                errors.append(f"{label}: {problem}")
+        elif n.type == "tool":
             tool = registry.get_tool(str(data.get("tool") or ""))
             if tool is None:
-                errors.append(f"{label}: select a valid tool")
+                errors.append(f"{label}: choose a tool")
             else:
                 mapped = set((data.get("mappings") or {}).keys())
                 for req in tool.parameters.get("required", []):
                     if req not in mapped:
-                        errors.append(f"{label}: tool argument '{req}' is not mapped")
-        elif ntype == "condition":
-            cond = data.get("condition") or {}
-            if cond.get("operator") not in {"==", "!=", ">", "<", ">=", "<=", "contains", "is_empty", "not_empty"}:
-                errors.append(f"{label}: choose a condition operator")
-            for e in edges:
-                if e["source"] == nid and edge_branch(e) not in ("true", "false"):
-                    errors.append(f"{label}: every outgoing connection must use the true or false handle")
-                    break
+                        errors.append(f"{label}: tool argument '{req}' is not set")
+        for key, m in (data.get("mappings") or {}).items() if isinstance(data.get("mappings"), dict) else []:
+            if isinstance(m, dict) and "source" in m:
+                if m.get("source") not in MAPPING_SOURCES:
+                    errors.append(f"{label}: value '{key}' has an invalid source")
+                elif m.get("source") == "node" and m.get("node_id") not in by_id:
+                    errors.append(f"{label}: value '{key}' reads from a step that does not exist")
 
+    plain_edges = [e.model_dump() for e in edges]
+    plain_nodes = [n.model_dump() for n in nodes]
     try:
-        order = topological_order(nodes, edges)
-    except WorkflowError:
-        errors.append("Workflow contains a cycle")
+        order = topological_order(plain_nodes, plain_edges)
+    except WorkflowError as exc:
+        errors.append(str(exc))
         order = []
 
-    if order and len(inputs) == 1:
-        reachable = {inputs[0]["id"]}
+    if order and len(starts) == 1:
+        reachable = {starts[0].id}
         for nid in order:
-            if any(e["source"] in reachable for e in edges if e["target"] == nid):
+            if any(e.source in reachable for e in edges if e.target == nid):
                 reachable.add(nid)
         for nid in by_id:
             if nid not in reachable:
-                errors.append(f"Node {nid} cannot be reached from the Input node")
+                errors.append(f"'{(by_id[nid].data or {}).get('label') or nid}' cannot be reached from Start")
 
     return errors

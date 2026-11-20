@@ -11,7 +11,9 @@ from .test_workflows import simple_definition
 
 def active_workflow(client, admin):
     agent = create_agent(client, admin)
-    wf = client.post("/api/workflows", headers=admin, json={"name": "Flow", "definition": simple_definition(agent["id"])}).json()
+    wf = client.post(
+        "/api/workflows", headers=admin, json={"name": "Flow", "definition": simple_definition(agent["id"])}
+    ).json()
     client.post(f"/api/workflows/{wf['id']}/activate", headers=admin)
     return wf
 
@@ -20,7 +22,12 @@ def test_schedule_validation(client, admin):
     wf = active_workflow(client, admin)
     base = {"name": "t", "workflow_group_id": wf["group_id"], "type": "schedule"}
     assert client.post("/api/triggers", headers=admin, json={**base, "cron": "not a cron"}).status_code == 400
-    assert client.post("/api/triggers", headers=admin, json={**base, "cron": "0 9 * * *", "timezone": "Mars/Base"}).status_code == 400
+    assert (
+        client.post(
+            "/api/triggers", headers=admin, json={**base, "cron": "0 9 * * *", "timezone": "Mars/Base"}
+        ).status_code
+        == 400
+    )
     r = client.post("/api/triggers", headers=admin, json={**base, "cron": "0 9 * * 1-5", "timezone": "Asia/Kolkata"})
     assert r.status_code == 201
     assert r.json()["next_run_at"] is not None
@@ -39,7 +46,13 @@ def test_tick_fires_due_trigger_once(client, admin, llm):
     trig = client.post(
         "/api/triggers",
         headers=admin,
-        json={"name": "t", "workflow_group_id": wf["group_id"], "type": "schedule", "cron": "*/5 * * * *", "input": {"message": "go"}},
+        json={
+            "name": "t",
+            "workflow_group_id": wf["group_id"],
+            "type": "schedule",
+            "cron": "*/5 * * * *",
+            "input": {"message": "go"},
+        },
     ).json()
 
     db = SessionLocal()
@@ -80,5 +93,7 @@ def test_webhook_auth_and_payload(client, admin, llm):
 def test_users_cannot_create_triggers(client, admin, make_user):
     wf = active_workflow(client, admin)
     user = make_user("u@example.com")
-    r = client.post("/api/triggers", headers=user, json={"name": "t", "workflow_group_id": wf["group_id"], "type": "webhook"})
+    r = client.post(
+        "/api/triggers", headers=user, json={"name": "t", "workflow_group_id": wf["group_id"], "type": "webhook"}
+    )
     assert r.status_code == 403

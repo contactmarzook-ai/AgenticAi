@@ -44,7 +44,9 @@ def test_llm_routing_and_general_fallback(client, admin, llm):
     def handler(messages, tools, json_mode):
         if json_mode:
             wants = "invoice" in messages[-1]["content"]
-            return LLMResponse(content=json.dumps({"type": "agent" if wants else "none", "id": agent["id"], "confidence": 0.9}))
+            return LLMResponse(
+                content=json.dumps({"type": "agent" if wants else "none", "id": agent["id"], "confidence": 0.9})
+            )
         if messages[0]["content"] == "Be helpful.":
             return LLMResponse(content="agent answer")
         return LLMResponse(content="general answer")
