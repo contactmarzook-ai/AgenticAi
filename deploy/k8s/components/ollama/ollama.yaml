@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ollama
+  labels: &labels
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/component: llm
+spec:
+  serviceName: ollama
+  replicas: 1
+  selector:
+    matchLabels: *labels
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      # For GPUs: add a nodeSelector/tolerations for your GPU pool and the
+      # nvidia.com/gpu limit below (requires the NVIDIA device plugin).
+      containers:
+        - name: ollama
+          image: ollama/ollama:0.5.7
+          ports:
+            - { name: http, containerPort: 11434 }
+          env:
+            - { name: OLLAMA_KEEP_ALIVE, value: "24h" }
+          resources:
+            requests: { cpu: "2", memory: 8Gi }
+            limits:
+              memory: 16Gi
+              # nvidia.com/gpu: 1
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - { name: models, mountPath: /root/.ollama }
+  volumeClaimTemplates:
+    - metadata:
+        name: models
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 50Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  labels:
+    app.kubernetes.io/name: ollama
+spec:
+  selector:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/component: llm
+  ports:
+    - { name: http, port: 11434, targetPort: http }
+---
+# Only AgentOS API and scheduler pods may call the model server.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ollama
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ollama
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: In, values: [agentos-api, agentos-scheduler] }
+      ports:
+        - { port: 11434, protocol: TCP }

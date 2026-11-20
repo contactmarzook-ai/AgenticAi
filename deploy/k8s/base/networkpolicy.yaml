@@ -1,0 +1,50 @@
+# Only the ingress controller (and the web pods) may reach the API; only the ingress
+# controller may reach the web pods. Egress is left open: the API must reach PostgreSQL
+# and your LLM endpoints, whose addresses differ per cluster. Tighten it in an overlay.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentos-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentos-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agentos-web
+      ports:
+        - { port: 8000, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentos-web
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentos-web
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - { port: 8080, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentos-scheduler
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentos-scheduler
+  policyTypes: [Ingress]
+  ingress: []

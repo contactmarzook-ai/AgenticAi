@@ -2,6 +2,7 @@
 
 import logging
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -12,6 +13,15 @@ logger = logging.getLogger("agentos.bootstrap")
 
 
 def seed(db: Session) -> None:
+    """Safe to run concurrently from several workers/pods: a lost race is ignored."""
+    try:
+        _seed(db)
+    except IntegrityError:
+        db.rollback()
+        logger.info("Seed data was created concurrently by another process")
+
+
+def _seed(db: Session) -> None:
     if db.query(User).count() == 0:
         email, password = settings.bootstrap_admin_email.strip().lower(), settings.bootstrap_admin_password
         if email and password:

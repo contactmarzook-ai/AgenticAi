@@ -1,0 +1,48 @@
+# Production overlay. Edit the values marked CHANGE, then:
+#   kubectl apply -k deploy/k8s/overlays/production
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agentos   # CHANGE if needed
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+# Remove this line if your LLM runs outside the cluster.
+components:
+  - ../../components/ollama
+
+images:
+  - name: agentos-api
+    newName: ghcr.io/your-org/agentos-api   # CHANGE: your registry
+    newTag: "1.0.0"                          # CHANGE: pin a release tag or digest
+  - name: agentos-web
+    newName: ghcr.io/your-org/agentos-web   # CHANGE
+    newTag: "1.0.0"                          # CHANGE
+
+patches:
+  # CHANGE: your hostname, TLS secret / cert-manager issuer and ingress class.
+  - target: { kind: Ingress, name: agentos }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: agentos.example.com
+      - op: add
+        path: /spec/tls
+        value:
+          - hosts: [agentos.example.com]
+            secretName: agentos-tls
+      - op: add
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-prod
+
+  # CHANGE: non-secret settings for your environment.
+  - target: { kind: ConfigMap, name: agentos-config }
+    patch: |-
+      - op: replace
+        path: /data/LLM_BASE_URL
+        value: http://ollama:11434/v1
+      - op: replace
+        path: /data/LLM_DEFAULT_MODEL
+        value: qwen2.5:7b-instruct

@@ -1,0 +1,6 @@
+# Optional: run Ollama inside the cluster. Skip this if you already have an LLM endpoint
+# (vLLM, a GPU node pool service, a hosted API) and point a provider at it in the Models page.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - ollama.yaml

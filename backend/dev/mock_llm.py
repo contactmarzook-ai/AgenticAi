@@ -47,7 +47,11 @@ async def chat(request: Request):
         match = re.search(r"Tools:\n(\[.*\])", system, re.S)
         catalog = json.loads(match.group(1)) if match else []
         pick = next((t for t in catalog if t["name"].lower() in text.lower()), None)
-        decision = {"type": pick["type"], "id": pick["id"], "confidence": 0.9} if pick else {"type": "none", "id": None, "confidence": 0.9}
+        decision = (
+            {"type": pick["type"], "id": pick["id"], "confidence": 0.9}
+            if pick
+            else {"type": "none", "id": None, "confidence": 0.9}
+        )
         return reply({"content": json.dumps(decision)}, prompt_text)
 
     if last.get("role") == "tool":
@@ -56,7 +60,11 @@ async def chat(request: Request):
     tool_names = {t["function"]["name"] for t in body.get("tools") or []}
     expr = ARITH.search(text)
     if "calculator" in tool_names and expr and any(op in expr.group(0) for op in "+-*/%"):
-        call = {"id": "call_1", "type": "function", "function": {"name": "calculator", "arguments": json.dumps({"expression": expr.group(0).strip()})}}
+        call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "calculator", "arguments": json.dumps({"expression": expr.group(0).strip()})},
+        }
         return reply({"content": "", "tool_calls": [call]}, prompt_text)
 
     return reply({"content": f"(mock model) You said: {text}"}, prompt_text)

@@ -1,0 +1,47 @@
+# Fires cron triggers and cleans up interrupted runs. One replica is enough;
+# extra replicas are safe (each firing is claimed atomically in the database).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentos-scheduler
+  labels: &labels
+    app.kubernetes.io/name: agentos-scheduler
+    app.kubernetes.io/component: scheduler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: *labels
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      serviceAccountName: agentos
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: scheduler
+          image: agentos-api
+          command: ["python", "-m", "app.scheduler"]
+          envFrom:
+            - configMapRef: { name: agentos-config }
+            - secretRef: { name: agentos-secrets }
+          env:
+            # The scheduler never creates users/providers; only the API does.
+            - { name: BOOTSTRAP_ADMIN_EMAIL, value: "" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }

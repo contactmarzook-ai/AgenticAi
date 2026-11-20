@@ -1,0 +1,29 @@
+# Non-secret settings. Secrets (DATABASE_URL, JWT_SECRET, BOOTSTRAP_ADMIN_*) live in the
+# "agentos-secrets" Secret, which you create yourself (see deploy/README.md).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentos-config
+data:
+  APP_ENV: production
+  AUTO_CREATE_TABLES: "false"
+  LOG_JSON: "true"
+  LOG_LEVEL: INFO
+  WEB_CONCURRENCY: "2"
+  CORS_ORIGINS: ""                       # same-origin behind the ingress
+  LLM_BASE_URL: http://ollama:11434/v1   # used only to seed the first provider
+  LLM_DEFAULT_MODEL: qwen2.5:7b-instruct
+  LLM_TIMEOUT_SECONDS: "120"
+  AGENT_TIMEOUT_SECONDS: "300"
+  AGENT_MAX_STEPS_CAP: "15"
+  TOOL_TIMEOUT_SECONDS: "30"
+  WORKFLOW_TIMEOUT_SECONDS: "900"
+  WORKFLOW_MAX_NODES: "50"
+  RUN_WORKER_THREADS: "4"
+  USER_RUNS_PER_MINUTE: "30"
+  MAX_MESSAGE_CHARS: "8000"
+  JWT_EXPIRE_MINUTES: "480"
+  LOGIN_MAX_ATTEMPTS: "5"
+  LOGIN_LOCKOUT_MINUTES: "15"
+  PASSWORD_MIN_LENGTH: "12"
+  HTTP_TOOL_ALLOWED_HOSTS: ""
