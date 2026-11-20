@@ -24,14 +24,22 @@ Paused 2026-11-20 because of session usage limits; scheduled to resume automatic
   - List: Turn on, History (filtered), Duplicate, Export, Import, Delete; sorted by update.
   - Session-expired message, cross-tab sign-in, friendly error messages.
 
+## Since the first pause (all pushed)
+
+- e2e regression run (e2e3) fixed and passing; README updated; backend formatted.
+- Brand tokens: accent colours now come from `frontend/src/theme.css` (CSS variables).
+- Renamed to **Star Dust** in all user-facing text (technical identifiers unchanged).
+- New login screen with the stardust agent-constellation animation (`StarDustScene.jsx`).
+- Menu and texts say "Workflow(s)" again; `#/automations` links still work.
+
 ## Remaining to deliver
 
-1. Finish the e2e regression run (`scratchpad/e2e3.js`): it passed up to the form-link step
-   and stopped at filling the schedule's default input (`label:has-text("Customer note") input`
-   in the "How it starts" dialog). Check whether `RunForm` renders the field there (or the
-   selector), fix, and rerun the whole script.
-2. Fresh-eyes QA pass with an independent agent on the new UI; fix confirmed issues.
-3. Update README (form links, loops, unified tools, alerts, retention, import/export) and
-   deploy docs if needed.
-4. Run backend tests on SQLite + PostgreSQL, `alembic check`, frontend lint/build, manifest
-   validation; commit, push; final summary to the user.
+1. Second-round QA report (started before the renames; it may mention "Automations"):
+   fix confirmed issues, rerun `scratchpad/e2e2.js` and `e2e3.js` (selectors already use
+   "Workflows"). If the report never arrived, run a fresh QA agent on the new UI.
+2. Vivriti Capital brand colours: the user will allow `www.vivriticapital.com` and
+   `vivriticapital.com` in the environment network settings. Only fetch the site once the user
+   confirms it is allowed; then put the real palette into `frontend/src/theme.css` (and the
+   login gradient in `Login.jsx`). Never guess the colours.
+3. Final verification (pytest SQLite + Postgres, alembic check, frontend lint/build,
+   kustomize + kubernetes-validate), delete this file, commit, push, final summary.
