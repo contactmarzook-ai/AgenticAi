@@ -18,6 +18,7 @@ from ..config import settings
 from ..llm.client import LLMError, get_llm_client
 from ..models import Agent, ChatMessage, ChatSession, Run, User, Workflow, utcnow
 from ..rbac import can_view, has_permission
+from .form_input import check_input, from_chat_message
 from .models_service import ModelNotAvailable, resolve_model, to_target
 from .runs import create_run, execute_run
 
@@ -150,6 +151,17 @@ def handle_message(db: Session, session: ChatSession, user: User, text: str) -> 
     run_input = {"message": text}
     if kind == "agent":
         run_input["history"] = history
+    else:
+        run_input, problems = check_input(target.definition or {}, from_chat_message(target.definition or {}, text))
+        if problems:
+            meta = {"routing": routing, "target": {"type": kind, "id": target.id, "name": target.name}}
+            return _reply(
+                db,
+                session,
+                f"'{target.name}' needs more information than a chat message ({'; '.join(problems)}). "
+                "Run it from Automations to fill in its form.",
+                meta,
+            )
     run = create_run(db, target=target, user=user, source="chat", input_data=run_input)
     execute_run(run.id)
     db.expire_all()

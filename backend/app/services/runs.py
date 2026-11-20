@@ -205,6 +205,10 @@ def execute_run(run_id: int) -> None:
         run.model_name = usage["model"]
         run.finished_at = utcnow()
         db.commit()
+        if run.status == "failed":
+            from .notify import notify_failure
+
+            notify_failure(db, run)
     finally:
         db.close()
 
@@ -223,3 +227,24 @@ def fail_stale_runs(db: Session) -> int:
         run.finished_at = utcnow()
     db.commit()
     return len(stale)
+
+
+def purge_old_runs(db: Session, days: int) -> int:
+    """Delete finished runs older than `days` (0 keeps everything)."""
+    if not days or days <= 0:
+        return 0
+    cutoff = utcnow() - timedelta(days=days)
+    from ..models import ChatMessage
+
+    old_ids = [
+        r.id
+        for r in db.query(Run.id).filter(Run.created_at < cutoff, Run.status.in_(["succeeded", "failed"])).limit(5000)
+    ]
+    if not old_ids:
+        return 0
+    db.query(ChatMessage).filter(ChatMessage.run_id.in_(old_ids)).update(
+        {ChatMessage.run_id: None}, synchronize_session=False
+    )
+    deleted = db.query(Run).filter(Run.id.in_(old_ids)).delete(synchronize_session=False)
+    db.commit()
+    return deleted

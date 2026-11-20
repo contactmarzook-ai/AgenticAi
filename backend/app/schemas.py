@@ -195,6 +195,7 @@ class WorkflowRunRequest(BaseModel):
 class ValidationOut(BaseModel):
     is_valid: bool
     errors: list[str]
+    warnings: list[str] = []
 
 
 # ---------- runs ----------
@@ -344,6 +345,7 @@ class SettingsIn(BaseModel):
     connections_min_role: Optional[Literal["builder", "admin"]] = None
     ai_builder_enabled: Optional[bool] = None
     max_wait_seconds: Optional[int] = Field(default=None, ge=0, le=3600)
+    run_retention_days: Optional[int] = Field(default=None, ge=0, le=3650)
 
 
 class GenerateRequest(BaseModel):

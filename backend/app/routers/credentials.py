@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..crypto import decrypt_json, encrypt_json
 from ..database import get_db
-from ..models import Credential, User
+from ..models import Credential, User, Workflow
 from ..nodes import CREDENTIAL_TYPES
 from ..rbac import ROLE_LEVEL, can_view, get_current_user
 from ..schemas import CredentialIn, CredentialOut
@@ -138,3 +138,24 @@ def delete_credential(
     db.delete(cred)
     audit(db, "connection.delete", user=user, resource_type="connection", resource_id=cred_id, request=request)
     return {"status": "deleted"}
+
+
+def _uses(definition: dict, cred_id: int) -> bool:
+    for n in (definition or {}).get("nodes") or []:
+        cfg = ((n or {}).get("data") or {}).get("config") or {}
+        if isinstance(cfg, dict) and str(cfg.get("credential_id", "")) == str(cred_id):
+            return True
+    notify = ((definition or {}).get("settings") or {}).get("notify_on_failure") or {}
+    return isinstance(notify, dict) and str(notify.get("credential_id", "")) == str(cred_id)
+
+
+@router.get("/{cred_id}/usage")
+def usage(cred_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Automations (non-archived versions) that use this connection."""
+    _get(db, cred_id, user)
+    rows = db.query(Workflow).filter(Workflow.status != "archived").all()
+    return [
+        {"id": w.id, "name": w.name, "status": w.status, "version": w.version, "visible": can_view(user, w)}
+        for w in rows
+        if _uses(w.definition, cred_id)
+    ]

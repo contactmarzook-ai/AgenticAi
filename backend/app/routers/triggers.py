@@ -12,7 +12,7 @@ from ..rbac import can_edit, can_view, require_permission
 from ..schemas import RunOut, TriggerCreated, TriggerIn, TriggerOut
 from ..security import hash_token, new_webhook_token
 from ..services.runs import submit_run
-from ..services.scheduler import next_fire_time, start_trigger_run, valid_cron
+from ..services.scheduler import InputProblem, next_fire_time, start_trigger_run, valid_cron
 
 router = APIRouter(prefix="/api/triggers", tags=["triggers"])
 hooks = APIRouter(prefix="/api/hooks", tags=["webhooks"])
@@ -206,7 +206,19 @@ def receive_webhook(
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="Body must be a JSON object")
 
-    run = start_trigger_run(db, trig, {**(trig.input or {}), **payload}, "webhook")
+    try:
+        run = start_trigger_run(db, trig, {**(trig.input or {}), **payload}, "webhook")
+    except InputProblem as exc:
+        audit(
+            db,
+            "webhook.receive",
+            resource_type="trigger",
+            resource_id=trigger_id,
+            status="failure",
+            details={"errors": exc.problems},
+            request=request,
+        )
+        raise HTTPException(status_code=400, detail={"message": "Invalid input", "errors": exc.problems}) from exc
     if run is None:
         raise HTTPException(status_code=409, detail="Workflow has no active version or the trigger owner lost access")
     trig.last_run_at = utcnow()

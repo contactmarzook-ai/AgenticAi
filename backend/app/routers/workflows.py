@@ -1,19 +1,22 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..audit import audit
 from ..database import get_db
-from ..models import Run, User, Workflow
+from ..models import AuditLog, Run, Trigger, User, Workflow
 from ..rbac import can_edit, can_view, require_permission
 from ..schemas import GenerateRequest, RunOut, ValidationOut, WorkflowIn, WorkflowOut, WorkflowRunRequest
 from ..services.ai_builder import BuilderError
 from ..services.ai_builder import generate as ai_generate
 from ..services.blueprint import to_definition
+from ..services.form_input import check_input
 from ..services.runs import create_run, enforce_rate_limit, execute_run, submit_run
 from ..services.templates_library import BY_KEY as TEMPLATES_BY_KEY
 from ..services.templates_library import TEMPLATES
-from ..services.workflow_validator import validate_definition
+from ..services.workflow_validator import reference_problems, validate_definition
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 templates_router = APIRouter(prefix="/api/templates", tags=["templates"])
@@ -34,6 +37,13 @@ def _get_visible(db: Session, workflow_id: int, user: User) -> Workflow:
 
 def _owner(db: Session, wf: Workflow) -> User | None:
     return db.get(User, wf.owner_id) if wf.owner_id else None
+
+
+def _checked_input(wf: Workflow, data: dict) -> dict:
+    cleaned, problems = check_input(wf.definition or {}, data)
+    if problems:
+        raise HTTPException(status_code=400, detail={"message": "Please check the form", "errors": problems})
+    return cleaned
 
 
 def _require_edit(user: User, wf: Workflow) -> None:
@@ -144,7 +154,7 @@ def validate(
 ):
     wf = _get_visible(db, workflow_id, user)
     errors = validate_definition(wf.definition, db, owner=_owner(db, wf))
-    return ValidationOut(is_valid=not errors, errors=errors)
+    return ValidationOut(is_valid=not errors, errors=errors, warnings=reference_problems(wf.definition)[1])
 
 
 @router.post("/{workflow_id}/activate", response_model=WorkflowOut)
@@ -221,8 +231,9 @@ def test(
     errors = validate_definition(wf.definition, db, owner=_owner(db, wf))
     if errors:
         raise HTTPException(status_code=400, detail={"message": "Validation failed", "errors": errors})
+    data = _checked_input(wf, body.input)
     enforce_rate_limit(db, user)
-    run = create_run(db, target=wf, user=user, source="test", input_data=body.input)
+    run = create_run(db, target=wf, user=user, source="test", input_data=data)
     execute_run(run.id)
     db.expire_all()
     run = db.get(Run, run.id)
@@ -251,8 +262,9 @@ def run(
     wf = _get_visible(db, workflow_id, user)
     if wf.status != "active":
         raise HTTPException(status_code=409, detail="Only the active version of a workflow can be run")
+    data = _checked_input(wf, body.input)
     enforce_rate_limit(db, user)
-    run_row = create_run(db, target=wf, user=user, source="api", input_data=body.input)
+    run_row = create_run(db, target=wf, user=user, source="api", input_data=data)
     audit(
         db,
         "workflow.run",
@@ -317,7 +329,17 @@ def generate_workflow(
     user: User = Depends(require_permission("workflow:write")),
 ):
     """Draft a workflow from a description. Nothing is saved; the builder shows it for review."""
-    enforce_rate_limit(db, user)
+    recent = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.user_id == user.id,
+            AuditLog.action == "workflow.generate",
+            AuditLog.created_at >= datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+        .count()
+    )
+    if recent >= 10:
+        raise HTTPException(status_code=429, detail="Too many AI drafts in a minute; wait a moment and try again")
     try:
         result = ai_generate(db, user, body.prompt)
     except BuilderError as exc:
@@ -331,3 +353,67 @@ def generate_workflow(
         request=request,
     )
     return result
+
+
+@router.post("/{workflow_id}/duplicate", response_model=WorkflowOut, status_code=201)
+def duplicate(
+    workflow_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow:write")),
+):
+    """Copy any automation you can see into a new private draft you own."""
+    src = _get_visible(db, workflow_id, user)
+    wf = Workflow(
+        name=f"Copy of {src.name}"[:200],
+        description=src.description,
+        definition=src.definition,
+        status="draft",
+        visibility="private",
+        department=user.department,
+        owner_id=user.id,
+    )
+    db.add(wf)
+    db.flush()
+    audit(
+        db,
+        "workflow.duplicate",
+        user=user,
+        resource_type="workflow",
+        resource_id=wf.id,
+        details={"from": src.id},
+        request=request,
+    )
+    db.refresh(wf)
+    return _out(wf, user)
+
+
+@router.delete("/groups/{group_id}")
+def delete_automation(
+    group_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow:write")),
+):
+    """Delete an automation: every version and its schedules/webhooks. Run history is kept."""
+    versions = db.query(Workflow).filter(Workflow.group_id == group_id).all()
+    latest = max(versions, key=lambda w: w.version) if versions else None
+    if latest is None or not can_view(user, latest):
+        raise HTTPException(status_code=404, detail="Automation not found")
+    if not (user.role == "admin" or latest.owner_id == user.id):
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can delete an automation")
+    triggers = db.query(Trigger).filter(Trigger.workflow_group_id == group_id).all()
+    for t in triggers:
+        db.delete(t)
+    for v in versions:
+        db.delete(v)
+    audit(
+        db,
+        "workflow.delete_all",
+        user=user,
+        resource_type="workflow",
+        resource_id=group_id,
+        details={"name": latest.name, "versions": len(versions), "triggers": len(triggers)},
+        request=request,
+    )
+    return {"status": "deleted", "versions": len(versions), "triggers": len(triggers)}

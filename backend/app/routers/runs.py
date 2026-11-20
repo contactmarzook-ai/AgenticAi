@@ -19,6 +19,7 @@ def list_runs(
     target_type: Optional[str] = None,
     target_id: Optional[int] = None,
     source: Optional[str] = None,
+    group_id: Optional[str] = None,
     mine: bool = False,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -36,6 +37,9 @@ def list_runs(
         q = q.filter(Run.target_id == target_id)
     if source:
         q = q.filter(Run.source == source)
+    if group_id:
+        ids = [w.id for w in db.query(Workflow.id).filter(Workflow.group_id == group_id)]
+        q = q.filter(Run.target_type == "workflow", Run.target_id.in_(ids or [-1]))
     total = q.count()
     rows = q.order_by(Run.id.desc()).offset(offset).limit(limit).all()
     return Page(items=[RunSummary.model_validate(r) for r in rows], total=total)

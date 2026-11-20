@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models import Trigger, User, Workflow
 from ..rbac import can_view, has_permission
-from .runs import create_run, execute_run, fail_stale_runs
+from .form_input import check_input
+from .platform_settings import get_settings
+from .runs import create_run, execute_run, fail_stale_runs, purge_old_runs
 
 logger = logging.getLogger("agentos.scheduler")
 
@@ -62,7 +64,26 @@ def start_trigger_run(db: Session, trigger: Trigger, input_data: dict, source: s
     if not has_permission(owner, "trigger:write") or not can_view(owner, wf):
         logger.warning("Trigger %s skipped: owner no longer has access to the workflow", trigger.id)
         return None
-    return create_run(db, target=wf, user=owner, source=source, input_data=input_data, trigger_id=trigger.id)
+    cleaned, problems = check_input(wf.definition or {}, input_data)
+    if problems:
+        if source == "webhook":
+            raise InputProblem(problems)
+        # A schedule cannot ask anyone for input: record a failed run so the owner sees why.
+        run = create_run(db, target=wf, user=owner, source=source, input_data=input_data, trigger_id=trigger.id)
+        run.status, run.error = (
+            "failed",
+            "Missing or invalid input: " + "; ".join(problems) + " (set a default input on the schedule)",
+        )
+        run.finished_at = utcnow()
+        db.commit()
+        return None
+    return create_run(db, target=wf, user=owner, source=source, input_data=cleaned, trigger_id=trigger.id)
+
+
+class InputProblem(Exception):
+    def __init__(self, problems: list[str]):
+        super().__init__("; ".join(problems))
+        self.problems = problems
 
 
 def tick(db: Session) -> int:
@@ -104,6 +125,7 @@ def main(poll_seconds: int = 20) -> None:
 
     configure_logging(settings.log_level, settings.log_json)
     logger.info("Scheduler started (poll every %ss)", poll_seconds)
+    last_purge = 0.0
     while True:
         db = SessionLocal()
         try:
@@ -111,6 +133,11 @@ def main(poll_seconds: int = 20) -> None:
             if n:
                 logger.info("Started %d scheduled run(s)", n)
             fail_stale_runs(db)
+            if time.monotonic() - last_purge > 3600:
+                last_purge = time.monotonic()
+                purged = purge_old_runs(db, int(get_settings(db, fresh=True).get("run_retention_days") or 0))
+                if purged:
+                    logger.info("Deleted %d runs past the retention period", purged)
         except Exception:
             logger.exception("Scheduler tick failed")
             db.rollback()

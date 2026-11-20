@@ -184,4 +184,84 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
             if nid not in reachable:
                 errors.append(f"'{(by_id[nid].data or {}).get('label') or nid}' cannot be reached from Start")
 
+    notify = ((definition.get("settings") or {}) if isinstance(definition.get("settings"), dict) else {}).get(
+        "notify_on_failure"
+    )
+    if isinstance(notify, dict) and notify.get("credential_id"):
+        problem = _credential_ok(db, owner, notify["credential_id"], {"slack_webhook", "teams_webhook", "smtp"})
+        if problem:
+            errors.append(f"Failure alerts: {problem}")
+        else:
+            cred = db.get(Credential, int(notify["credential_id"]))
+            if cred.type == "smtp" and _empty(notify.get("email_to")):
+                errors.append("Failure alerts: enter the email address to notify")
+
+    errors.extend(reference_problems(definition)[0])
     return errors
+
+
+def _strings(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _strings(v)
+
+
+def reference_problems(definition: Any) -> tuple[list[str], list[str]]:
+    """Check {{ }} references. Returns (errors, warnings).
+
+    Errors: a reference to a step that does not exist, or that never runs before the step using it.
+    Warnings: a reference to a form field the Start step does not define (webhooks may still send it).
+    """
+    from .workflow_engine import VAR_RE
+
+    if not isinstance(definition, dict):
+        return [], []
+    nodes = [n for n in definition.get("nodes") or [] if isinstance(n, dict) and isinstance(n.get("id"), str)]
+    edges = [e for e in definition.get("edges") or [] if isinstance(e, dict)]
+    by_id = {n["id"]: n for n in nodes}
+    parents: dict[str, set] = {}
+    for e in edges:
+        if isinstance(e.get("source"), str) and isinstance(e.get("target"), str):
+            parents.setdefault(e["target"], set()).add(e["source"])
+
+    def ancestors(nid: str) -> set:
+        seen, stack = set(), list(parents.get(nid, ()))
+        while stack:
+            cur = stack.pop()
+            if cur not in seen:
+                seen.add(cur)
+                stack.extend(parents.get(cur, ()))
+        return seen
+
+    start = next((n for n in nodes if n.get("type") == "input"), None)
+    start_data = (start or {}).get("data")
+    start_fields = start_data.get("fields") if isinstance(start_data, dict) else None
+    form_keys = (
+        {f.get("key") for f in start_fields or [] if isinstance(f, dict)} if isinstance(start_fields, list) else set()
+    )
+    errors, warnings = [], []
+    for n in nodes:
+        data = n.get("data") if isinstance(n.get("data"), dict) else {}
+        label = f"'{data.get('label') or n.get('type')}'"
+        before = None
+        for text in _strings({k: v for k, v in data.items() if k not in ("label", "fields")}):
+            for m in VAR_RE.finditer(text):
+                root, path = m.group(1), m.group(2).lstrip(".")
+                if root == "input":
+                    field = path.split(".")[0] if path else ""
+                    if form_keys and field and field not in form_keys and field != "message":
+                        warnings.append(f"{label} uses form field '{field}', which the Start form does not have")
+                    continue
+                if root not in by_id:
+                    errors.append(f"{label} uses data from a step that no longer exists ({m.group(0)})")
+                    continue
+                before = ancestors(n["id"]) if before is None else before
+                if root not in before:
+                    src = (by_id[root].get("data") or {}).get("label") or root
+                    errors.append(f"{label} uses data from '{src}', which does not run before it")
+    return sorted(set(errors)), sorted(set(warnings))

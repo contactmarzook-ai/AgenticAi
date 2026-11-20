@@ -26,6 +26,8 @@ DEFAULTS = {
     "ai_builder_enabled": True,
     # Upper bound for the Wait step.
     "max_wait_seconds": 300,
+    # Delete run history older than this many days (0 = keep forever). Audit logs are never deleted.
+    "run_retention_days": 90,
 }
 
 _cache: dict = {"at": 0.0, "value": None}
