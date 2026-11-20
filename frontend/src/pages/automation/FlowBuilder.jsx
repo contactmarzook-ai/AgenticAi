@@ -27,7 +27,7 @@ const LOGIC = [
   { type: 'condition', name: 'If / else', description: 'Go one way or another based on a value.', icon: GitBranch },
   { type: 'switch', name: 'Switch', description: 'Route to one of several paths (e.g. by category).', icon: Split },
   { type: 'loop', name: 'Repeat for each', description: 'Do one step for every item in a list.', icon: Repeat },
-  { type: 'end', name: 'Finish', description: 'End of a path; choose what the automation returns.', icon: Flag },
+  { type: 'end', name: 'Finish', description: 'End of a path; choose what the workflow returns.', icon: Flag },
 ];
 const BRANCHING = ['condition', 'switch'];
 const STATUS_ICON = { success: CircleCheck, failed: CircleX, error_continued: CircleX, skipped: CircleDashed };
@@ -154,7 +154,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges.map((e) => ({ ...e, type: 'step', label: e.label || edgeLabel(e.sourceHandle) })));
   const [current, setCurrent] = useState(workflow);
   const [versions, setVersions] = useState([]);
-  const [name, setName] = useState(draft?.name || workflow?.name || 'New automation');
+  const [name, setName] = useState(draft?.name || workflow?.name || 'New workflow');
   const [meta_, setMeta] = useState({
     description: draft?.description || workflow?.description || '',
     trigger_keywords: workflow?.trigger_keywords || '',
@@ -195,7 +195,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   }, [current?.group_id, current?.status, loadVersions]);
 
   useEffect(() => {
-    if (current?.id) window.history.replaceState(null, '', `#/automations/${current.id}`);
+    if (current?.id) window.history.replaceState(null, '', `#/workflows/${current.id}`);
   }, [current?.id]);
 
   useEffect(() => {
@@ -408,7 +408,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
 
   // ---------- saving & lifecycle ----------
   const body = () => ({
-    name: name.trim() || 'Untitled automation',
+    name: name.trim() || 'Untitled workflow',
     description: meta_.description || null,
     trigger_keywords: meta_.trigger_keywords || null,
     visibility: meta_.visibility,
@@ -467,7 +467,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   };
 
   const turnOff = async () => {
-    if (!live || !confirm('Turn this automation off? Schedules, webhooks, form links and chat will stop starting it.')) return;
+    if (!live || !confirm('Turn this workflow off? Schedules, webhooks, form links and chat will stop starting it.')) return;
     try {
       const res = (await api.post(`/workflows/${live.id}/deactivate`)).data;
       if (res.id === current?.id) setCurrent(res);
@@ -704,7 +704,7 @@ function AlertSettings({ settings, setSettings, credentialTypes }) {
 function AutomationSettings({ meta, setMeta, settings, setSettings, editable, lastRun, credentialTypes }) {
   return (
     <fieldset disabled={!editable} className="space-y-3">
-      <h3 className="font-semibold text-gray-900">About this automation</h3>
+      <h3 className="font-semibold text-gray-900">About this workflow</h3>
       <Field label="Description">
         <Textarea rows={3} className="font-sans" maxLength={2000} value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} />
       </Field>
@@ -719,7 +719,7 @@ function AutomationSettings({ meta, setMeta, settings, setSettings, editable, la
       <details className="rounded-md border p-2 text-sm">
         <summary className="cursor-pointer text-gray-600">Advanced</summary>
         <div className="mt-2">
-          <Field label="Chat keywords" hint="Comma separated. Chat messages containing one run this automation directly (otherwise the AI decides).">
+          <Field label="Chat keywords" hint="Comma separated. Chat messages containing one run this workflow directly (otherwise the AI decides).">
             <Input value={meta.trigger_keywords} onChange={(e) => setMeta({ ...meta, trigger_keywords: e.target.value })} />
           </Field>
         </div>
@@ -750,10 +750,10 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
     const setFields = (f) => onChange({ fields: f });
     return (
       <div className="space-y-3">
-        <p className="text-sm text-gray-600">An automation starts when someone fills in this form, from chat, a public form link, a schedule or a webhook.</p>
+        <p className="text-sm text-gray-600">A workflow starts when someone fills in this form, from chat, a public form link, a schedule or a webhook.</p>
         {onTriggers && <Button variant="secondary" icon={Clock} onClick={onTriggers}>Schedule, form link or webhook</Button>}
         <div className="text-xs font-semibold uppercase text-gray-500">Form fields</div>
-        {!fields.length && <p className="text-xs text-gray-400">No fields yet. Add some so people can give the automation information.</p>}
+        {!fields.length && <p className="text-xs text-gray-400">No fields yet. Add some so people can give the workflow information.</p>}
         {fields.map((f, i) => (
           <div key={i} className="space-y-1.5 rounded-md border bg-gray-50 p-2">
             <div className="flex gap-1">
@@ -804,7 +804,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
           </>
         )}
         {!nt && !isLoop && <Alert>This step type is not available (it may have been disabled by an administrator).</Alert>}
-        {nt?.disabled && <Alert>{nt.name} steps are disabled by your administrator. This automation will fail until the step is replaced.</Alert>}
+        {nt?.disabled && <Alert>{nt.name} steps are disabled by your administrator. This workflow will fail until the step is replaced.</Alert>}
         {nt && <StepForm nodeType={nt} config={data.config || {}} onChange={(config) => onChange({ config })} groups={loopGroups} agents={agents} credentialTypes={credentialTypes} />}
         {nt && (
           <details className="rounded-md border p-2 text-sm">
@@ -824,7 +824,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
                   </Field>
                 </div>
               )}
-              <Checkbox label="Keep the automation going (the step's output becomes { error })" checked={!!settings.continue_on_error} onChange={(e) => onChange({ settings: { ...settings, continue_on_error: e.target.checked } })} />
+              <Checkbox label="Keep the workflow going (the step's output becomes { error })" checked={!!settings.continue_on_error} onChange={(e) => onChange({ settings: { ...settings, continue_on_error: e.target.checked } })} />
             </div>
           </details>
         )}

@@ -38,9 +38,9 @@ def notify_failure(db: Session, run: Run) -> None:
         return
 
     text = (
-        f"Automation '{wf.name}' failed (run #{run.id}, started by {run.source}).\n"
+        f"Workflow '{wf.name}' failed (run #{run.id}, started by {run.source}).\n"
         f"Reason: {run.error or 'unknown'}\n"
-        "Open AgentOS > History for details."
+        "Open Star Dust > History for details."
     )
 
     def get_credential(cred_id, expected_type):
@@ -60,14 +60,14 @@ def notify_failure(db: Session, run: Run) -> None:
             get_node_type("slack_message").handler({"credential_id": cred.id, "text": text}, ctx)
         elif cred.type == "teams_webhook":
             get_node_type("teams_message").handler(
-                {"credential_id": cred.id, "title": "Automation failed", "text": text}, ctx
+                {"credential_id": cred.id, "title": "Workflow failed", "text": text}, ctx
             )
         elif cred.type == "smtp" and cfg.get("email_to"):
             get_node_type("send_email").handler(
                 {
                     "credential_id": cred.id,
                     "to": cfg["email_to"],
-                    "subject": f"Automation failed: {wf.name}",
+                    "subject": f"Workflow failed: {wf.name}",
                     "body": text,
                 },
                 ctx,

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Hexagon } from 'lucide-react';
+import { CheckCircle2, Sparkles } from 'lucide-react';
 import api, { errorMessage } from '../lib/api';
 import { Alert, Button } from '../lib/ui';
 import RunForm, { missingRequired } from './automation/RunForm';
 import { ResultView } from './RunSteps';
 
-/** A shareable form (#/f/<id>/<token>) that starts an automation without signing in. */
+/** A shareable form (#/f/<id>/<token>) that starts a workflow without signing in. */
 export default function PublicForm({ id, token }) {
   const [form, setForm] = useState(null);
   const [values, setValues] = useState({});
@@ -64,7 +64,7 @@ export default function PublicForm({ id, token }) {
           </div>
         )}
       </div>
-      <p className="mt-4 flex items-center justify-center gap-1 text-xs text-gray-400"><Hexagon className="h-3 w-3" /> Powered by AgentOS</p>
+      <p className="mt-4 flex items-center justify-center gap-1 text-xs text-gray-400"><Sparkles className="h-3 w-3" /> Powered by Star Dust</p>
     </div>
   );
 }

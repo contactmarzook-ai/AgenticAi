@@ -46,7 +46,7 @@ def create_app() -> FastAPI:
         db.close()
 
     app = FastAPI(
-        title="AgentOS",
+        title="Star Dust",
         version="1.0.0",
         docs_url=None if settings.is_production else "/api/docs",
         redoc_url=None,

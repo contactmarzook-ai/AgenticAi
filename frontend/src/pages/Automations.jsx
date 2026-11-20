@@ -33,10 +33,10 @@ export default function Automations({ user }) {
 
   const load = useCallback(() => api.get('/workflows').then((r) => setWorkflows(r.data)).catch((e) => setError(errorMessage(e))), []);
 
-  // Deep link: #/automations/<id> reopens the builder after a refresh.
+  // Deep link: #/workflows/<id> reopens the builder after a refresh.
   useEffect(() => {
-    const m = window.location.hash.match(/^#\/automations\/(\d+)/);
-    if (m) api.get(`/workflows/${m[1]}`).then((r) => setOpen({ workflow: r.data })).catch(() => window.history.replaceState(null, '', '#/automations'));
+    const m = window.location.hash.match(/^#\/(?:workflows|automations)\/(\d+)/);
+    if (m) api.get(`/workflows/${m[1]}`).then((r) => setOpen({ workflow: r.data })).catch(() => window.history.replaceState(null, '', '#/workflows'));
   }, []);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export default function Automations({ user }) {
     if (canBuild) api.get('/templates').then((r) => setTemplates(r.data)).catch(() => {});
   }, [load, canBuild]);
 
-  // One card per automation (group): prefer the live version, otherwise the newest draft.
+  // One card per workflow (group): prefer the live version, otherwise the newest draft.
   const groups = useMemo(() => {
     const byGroup = new Map();
     workflows.forEach((w) => byGroup.set(w.group_id, [...(byGroup.get(w.group_id) || []), w]));
@@ -117,9 +117,9 @@ export default function Automations({ user }) {
       try {
         data = JSON.parse(reader.result);
       } catch {
-        throw new Error('That file is not an AgentOS automation (not valid JSON).');
+        throw new Error('That file is not a Star Dust workflow (not valid JSON).');
       }
-      if (!data?.definition?.nodes) throw new Error('That file is not an AgentOS automation.');
+      if (!data?.definition?.nodes) throw new Error('That file is not a Star Dust workflow.');
       const wf = (await api.post('/workflows', { name: data.name || file.name, description: data.description || null, definition: data.definition })).data;
       setOpen({ workflow: wf });
     });
@@ -138,7 +138,7 @@ export default function Automations({ user }) {
           agents={agents}
           user={user}
           onSaved={load}
-          onBack={() => { window.history.replaceState(null, '', '#/automations'); setOpen(undefined); load(); }}
+          onBack={() => { window.history.replaceState(null, '', '#/workflows'); setOpen(undefined); load(); }}
           onOpenVersion={(v) => setOpen({ workflow: v })}
         />
       </Suspense>
@@ -192,7 +192,7 @@ export default function Automations({ user }) {
 
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Your automations</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Your workflows</h2>
             {info && <span className="text-sm text-green-700">{info}</span>}
             {groups.length > 4 || query ? (
               <div className="relative">
@@ -202,7 +202,7 @@ export default function Automations({ user }) {
             ) : null}
           </div>
           {!groups.length ? (
-            <Empty>{canBuild ? 'Nothing yet. Describe one above or pick a template.' : 'No automations are shared with you yet.'}</Empty>
+            <Empty>{canBuild ? 'Nothing yet. Describe one above or pick a template.' : 'No workflows are shared with you yet.'}</Empty>
           ) : (
             <div className="divide-y rounded-xl border bg-white">
               {groups.map(({ latest, live }) => {

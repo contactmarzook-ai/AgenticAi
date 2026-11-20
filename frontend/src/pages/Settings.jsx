@@ -36,7 +36,7 @@ export default function Settings() {
       setHosts(res.http_allowed_hosts.join('\n'));
       const affected = res.affected_automations || [];
       setNotice(affected.length
-        ? { kind: 'info', text: `Saved. These automations use a step you just turned off and will fail until changed: ${affected.map((a) => `${a.name} (${a.status === 'active' ? 'live' : a.status})`).join(', ')}.` }
+        ? { kind: 'info', text: `Saved. These workflows use a step you just turned off and will fail until changed: ${affected.map((a) => `${a.name} (${a.status === 'active' ? 'live' : a.status})`).join(', ')}.` }
         : { kind: 'success', text: 'Settings saved. They apply to new runs immediately.' });
     } catch (err) {
       setNotice({ kind: 'error', text: errorMessage(err) });
@@ -47,13 +47,13 @@ export default function Settings() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Platform settings" subtitle="What builders can use, and what automations may reach." actions={<Button loading={saving} onClick={save}>Save settings</Button>} />
+      <PageHeader title="Platform settings" subtitle="What builders can use, and what workflows may reach." actions={<Button loading={saving} onClick={save}>Save settings</Button>} />
       <div className="flex-1 space-y-6 overflow-y-auto p-6">
         {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 
         <section className="space-y-3 rounded-xl border bg-white p-5">
           <h2 className="font-semibold text-gray-900">Available steps</h2>
-          <p className="text-sm text-gray-500">Untick a step to remove it from the builder and block it in every automation, including existing ones.</p>
+          <p className="text-sm text-gray-500">Untick a step to remove it from the builder and block it in every workflow, including existing ones.</p>
           <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
             {nodes.map((n) => {
               const Icon = iconFor(n.icon);
@@ -77,7 +77,7 @@ export default function Settings() {
           <Field label="Hosts that HTTP request steps may call" hint="One host per line, e.g. api.example.com (a pasted URL is reduced to its host). Use *.example.com for subdomains, or * for any public host. Slack/Teams/email connections are not limited by this list.">
             <Textarea rows={5} value={hosts} onChange={(e) => setHosts(e.target.value)} placeholder={'api.yourcompany.com\n*.salesforce.com'} />
           </Field>
-          <Checkbox label="Allow private / internal network addresses (intranet APIs). Leave off unless needed: it lets automations reach internal systems." checked={!!s.allow_private_network} onChange={(e) => setS({ ...s, allow_private_network: e.target.checked })} />
+          <Checkbox label="Allow private / internal network addresses (intranet APIs). Leave off unless needed: it lets workflows reach internal systems." checked={!!s.allow_private_network} onChange={(e) => setS({ ...s, allow_private_network: e.target.checked })} />
         </section>
 
         <section className="grid gap-4 rounded-xl border bg-white p-5 md:grid-cols-2">
@@ -94,7 +94,7 @@ export default function Settings() {
             <Input type="number" min="0" max="3600" value={s.max_wait_seconds} onChange={(e) => setS({ ...s, max_wait_seconds: Number(e.target.value) })} />
           </Field>
           <div className="pt-6">
-            <Checkbox label="AI builder (create automations from a description)" checked={!!s.ai_builder_enabled} onChange={(e) => setS({ ...s, ai_builder_enabled: e.target.checked })} />
+            <Checkbox label="AI builder (create workflows from a description)" checked={!!s.ai_builder_enabled} onChange={(e) => setS({ ...s, ai_builder_enabled: e.target.checked })} />
           </div>
         </section>
       </div>

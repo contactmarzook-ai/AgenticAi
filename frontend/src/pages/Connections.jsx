@@ -35,7 +35,7 @@ export default function Connections() {
       /* ignore */
     }
     const warning = usedBy.length
-      ? `“${c.name}” is used by: ${usedBy.map((u) => u.visible ? u.name : 'an automation you cannot see').join(', ')}. They will fail until another connection is chosen. Delete anyway?`
+      ? `“${c.name}” is used by: ${usedBy.map((u) => u.visible ? u.name : 'a workflow you cannot see').join(', ')}. They will fail until another connection is chosen. Delete anyway?`
       : `Delete connection “${c.name}”?`;
     if (!confirm(warning)) return;
     try {
@@ -50,7 +50,7 @@ export default function Connections() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Connections"
-        subtitle="Saved accounts your automations use: email, Slack, Teams, API keys. Secrets are encrypted."
+        subtitle="Saved accounts your workflows use: email, Slack, Teams, API keys. Secrets are encrypted."
         actions={<Button icon={Plus} onClick={() => setEditing({})}>New connection</Button>}
       />
       <div className="flex-1 space-y-3 overflow-y-auto p-6">

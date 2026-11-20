@@ -420,9 +420,9 @@ def delete_automation(
     versions = db.query(Workflow).filter(Workflow.group_id == group_id).all()
     latest = max(versions, key=lambda w: w.version) if versions else None
     if latest is None or not can_view(user, latest):
-        raise HTTPException(status_code=404, detail="Automation not found")
+        raise HTTPException(status_code=404, detail="Workflow not found")
     if not (user.role == "admin" or latest.owner_id == user.id):
-        raise HTTPException(status_code=403, detail="Only the owner or an admin can delete an automation")
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can delete a workflow")
     triggers = db.query(Trigger).filter(Trigger.workflow_group_id == group_id).all()
     for t in triggers:
         db.delete(t)

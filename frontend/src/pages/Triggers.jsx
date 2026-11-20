@@ -80,8 +80,8 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
   return (
     <Modal wide title={`How “${workflow.name}” starts`} onClose={onClose}>
       <div className="space-y-4">
-        {!isLive && <Alert kind="info">This automation is not live yet. Anything you add here starts working once you <b>Publish</b>.</Alert>}
-        <p className="text-sm text-gray-500">People can always run it from the Automations list or from chat. Add more ways below.</p>
+        {!isLive && <Alert kind="info">This workflow is not live yet. Anything you add here starts working once you <b>Publish</b>.</Alert>}
+        <p className="text-sm text-gray-500">People can always run it from the Workflows list or from chat. Add more ways below.</p>
         <Alert>{error}</Alert>
         {secret && (
           <Alert kind="success">
@@ -158,7 +158,7 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
                 <Field label="Form title"><Input value={form.options?.title || ''} onChange={(e) => setForm({ ...form, options: { ...form.options, title: e.target.value } })} /></Field>
                 <Field label="Introduction (optional)"><Textarea rows={2} className="font-sans" value={form.options?.intro || ''} onChange={(e) => setForm({ ...form, options: { ...form.options, intro: e.target.value } })} /></Field>
                 <Field label="Message after submitting (optional)"><Input value={form.options?.success_message || ''} placeholder="Thank you - your submission was received." onChange={(e) => setForm({ ...form, options: { ...form.options, success_message: e.target.value } })} /></Field>
-                <Checkbox label="Show the automation's result to the person who submitted" checked={!!form.options?.show_result} onChange={(e) => setForm({ ...form, options: { ...form.options, show_result: e.target.checked } })} />
+                <Checkbox label="Show the workflow's result to the person who submitted" checked={!!form.options?.show_result} onChange={(e) => setForm({ ...form, options: { ...form.options, show_result: e.target.checked } })} />
                 {!fields.length && <Alert kind="info">The Start step has no form fields yet. Add fields to the Start step so the form asks for something.</Alert>}
               </>
             )}

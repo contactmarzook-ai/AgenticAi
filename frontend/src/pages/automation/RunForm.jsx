@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Checkbox, Field, Input, Select, Textarea } from '../../lib/ui';
 
-/** The Start step's form, filled in by whoever runs the automation. Falls back to raw JSON. */
+/** The Start step's form, filled in by whoever runs the workflow. Falls back to raw JSON. */
 export default function RunForm({ fields, value, onChange, hideJson }) {
   const [raw, setRaw] = useState(false);
   const [text, setText] = useState(JSON.stringify(value || {}, null, 2));
@@ -11,7 +11,7 @@ export default function RunForm({ fields, value, onChange, hideJson }) {
   if (raw || !fields?.length) {
     return (
       <div className="space-y-1">
-        <Field label="Input (JSON)" hint={!fields?.length ? 'This automation has no form. Send any JSON object (or leave {}).' : undefined}>
+        <Field label="Input (JSON)" hint={!fields?.length ? 'This workflow has no form. Send any JSON object (or leave {}).' : undefined}>
           <Textarea
             rows={6}
             value={text}

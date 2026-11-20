@@ -2,7 +2,7 @@ import { Badge, JsonBlock, StatusBadge } from '../lib/ui';
 
 const isPlain = (v) => v === null || ['string', 'number', 'boolean'].includes(typeof v);
 
-/** Friendly display of an automation's result: text as text, flat objects as a labelled list. */
+/** Friendly display of a workflow's result: text as text, flat objects as a labelled list. */
 export function ResultView({ value }) {
   if (value === undefined || value === null || value === '') return <p className="text-sm text-gray-500">No result.</p>;
   if (isPlain(value)) return <div className="whitespace-pre-wrap rounded-md border bg-gray-50 p-4 text-sm">{String(value)}</div>;

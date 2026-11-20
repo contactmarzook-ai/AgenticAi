@@ -1,4 +1,4 @@
-# Single-machine deployment: PostgreSQL + Ollama + AgentOS (API, scheduler, web).
+# Single-machine deployment: PostgreSQL + Ollama + Star Dust (API, scheduler, web).
 #   cp .env.example .env   # then edit the secrets
 #   docker compose up -d --build
 #   docker compose exec ollama ollama pull qwen2.5:7b-instruct

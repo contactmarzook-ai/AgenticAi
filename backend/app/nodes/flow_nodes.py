@@ -30,7 +30,7 @@ def wait(cfg: dict, ctx: NodeContext):
     "stop_with_error",
     "Stop with error",
     "Flow",
-    "Stop the automation and mark the run as failed with your message.",
+    "Stop the workflow and mark the run as failed with your message.",
     "octagon-x",
     [Field("message", "Error message", "text", required=True)],
 )

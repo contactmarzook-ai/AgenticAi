@@ -1,6 +1,6 @@
-# AgentOS - product assessment and release scope
+# Star Dust - product assessment and release scope
 
-Owner's review of AgentOS against the automation tools our users already know, what overlaps or
+Owner's review of Star Dust against the automation tools our users already know, what overlaps or
 over-complicates the product, and what this release therefore contains.
 
 ## Who it is for
@@ -14,7 +14,7 @@ and who can do what.
 Compared with the tools non-coders most often meet: **n8n**, **Zapier**, **Make** and
 **Microsoft Power Automate**. Columns describe the capability class, not exact parity.
 
-| Capability users expect | n8n | Zapier | Make | Power Automate | AgentOS (this release) |
+| Capability users expect | n8n | Zapier | Make | Power Automate | Star Dust (this release) |
 |---|---|---|---|---|---|
 | Describe-in-words → draft automation | AI builder | Copilot | AI assistant | Copilot | **Yes** (local model, validated + auto-repaired) |
 | Visual step builder, no code | Yes | Linear editor | Yes | Yes | **Yes** |
@@ -38,7 +38,7 @@ Compared with the tools non-coders most often meet: **n8n**, **Zapier**, **Make*
 
 ### Conclusion
 
-AgentOS matches the market on the **core loop** non-coders need: describe → review → test →
+Star Dust matches the market on the **core loop** non-coders need: describe → review → test →
 publish → run from a form / schedule / webhook / chat → see history → get alerted on failure,
 with stronger governance and data control than the SaaS tools (self-hosted, own models, admin
 allowlists, audit). Its deliberate gap is **breadth of app integrations**: it does not compete on
@@ -64,7 +64,7 @@ Copilot), **Agents** (for open-ended tasks; automations for repeatable ones), **
 
 ## Release scope (v1.0)
 
-In: everything in the AgentOS column above, the QA fixes from exploratory testing, and the
+In: everything in the Star Dust column above, the QA fixes from exploratory testing, and the
 deployment package (Docker, Kubernetes, CI).
 
 Next release candidates, in priority order: app-event triggers (email inbox, new file, new

@@ -71,7 +71,7 @@ export default function ConnectionEditor({ types, existing, onClose, onSaved }) 
             )}
           </Field>
         ))}
-        <Field label="Who can use it in their automations">
+        <Field label="Who can use it in their workflows">
           <Select value={visibility} onChange={(e) => setVisibility(e.target.value)}>
             <option value="private">Only me</option>
             <option value="department">My department</option>

@@ -52,7 +52,7 @@ export default function Runs({ user }) {
           <div className="w-44"><Select value={filters.target_type} onChange={(e) => setFilter('target_type', e.target.value)}>
             <option value="">Agents & workflows</option>
             <option value="agent">Agents</option>
-            <option value="workflow">Automations</option>
+            <option value="workflow">Workflows</option>
           </Select></div>
           <div className="w-44"><Select value={filters.source} onChange={(e) => setFilter('source', e.target.value)}>
             <option value="">Any source</option>
@@ -60,7 +60,7 @@ export default function Runs({ user }) {
           </Select></div>
           {filters.group_id && (
             <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
-              Only “{groupName || 'this automation'}”
+              Only “{groupName || 'this workflow'}”
               <button aria-label="Clear" onClick={() => { setGroupName(''); setFilter('group_id', ''); window.history.replaceState(null, '', '#/runs'); }}>×</button>
             </span>
           )}
@@ -72,7 +72,7 @@ export default function Runs({ user }) {
           columns={[
             { key: 'id', label: '#' },
             { key: 'created_at', label: 'Started', render: (r) => formatDate(r.created_at) },
-            { key: 'target', label: 'What', render: (r) => <><Badge>{r.target_type === 'workflow' ? 'automation' : r.target_type}</Badge> {r.target_name}</> },
+            { key: 'target', label: 'What', render: (r) => <><Badge>{r.target_type === 'workflow' ? 'workflow' : r.target_type}</Badge> {r.target_name}</> },
             { key: 'source', label: 'Source' },
             { key: 'status', label: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'tokens', label: 'Tokens', render: (r) => r.prompt_tokens + r.completion_tokens },

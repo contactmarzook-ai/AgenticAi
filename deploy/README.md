@@ -1,4 +1,4 @@
-# Deploying AgentOS
+# Deploying Star Dust
 
 Three components, all built from this repository:
 
@@ -109,7 +109,7 @@ create users under **Users**.
 - **Long requests**: agent runs can take minutes on local models, so the ingress timeouts are
   600s. Workflows started via the API or triggers run in the background; clients poll
   `GET /api/runs/{id}`.
-- **Pod security**: all AgentOS containers run as non-root with a read-only root filesystem,
+- **Pod security**: all Star Dust containers run as non-root with a read-only root filesystem,
   no privilege escalation and all capabilities dropped. The namespace enforces the `baseline`
   Pod Security Standard and warns on `restricted`, because the Ollama image runs as root. If
   you don't run Ollama in this namespace, set `enforce: restricted`.

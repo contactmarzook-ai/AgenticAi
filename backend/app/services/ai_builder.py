@@ -112,7 +112,7 @@ def generate(db: Session, user: User, prompt: str) -> dict:
             blocking = [e for e in errors if not any(k in e for k in USER_FIXABLE)]
             if not blocking:
                 return {
-                    "name": str(blueprint.get("name") or "New automation")[:200],
+                    "name": str(blueprint.get("name") or "New workflow")[:200],
                     "description": str(blueprint.get("description") or prompt)[:2000],
                     "definition": definition,
                     "warnings": errors,

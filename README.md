@@ -1,4 +1,6 @@
-# AgentOS
+# Star Dust
+
+*(Formerly AgentOS. Technical identifiers - image names `agentos-api` / `agentos-web`, Kubernetes resource names, environment variables - keep the old name so existing deployments keep working.)*
 
 A self-hosted, no-code **workflow automation** platform with built-in AI, running on **your own
 models** (Ollama, vLLM or any OpenAI-compatible endpoint), with role-based access control,

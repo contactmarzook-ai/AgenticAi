@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Bot, Hexagon, History, KeyRound, LogOut, MessageSquare, Plug, ScrollText, Server, SlidersHorizontal, Users as UsersIcon, Workflow } from 'lucide-react';
+import { Activity, Bot, History, KeyRound, LogOut, MessageSquare, Plug, ScrollText, Server, SlidersHorizontal, Users as UsersIcon, Workflow } from 'lucide-react';
 import api from './lib/api';
 import { can, useAuth } from './lib/auth';
 import { cx } from './lib/ui';
@@ -16,10 +16,11 @@ import Audit from './pages/Audit';
 import Monitoring from './pages/Monitoring';
 import ChangePassword from './pages/ChangePassword';
 import PublicForm from './pages/PublicForm';
+import { Logo } from './lib/brand';
 import { confirmLeave } from './lib/unsaved';
 
 const PAGES = [
-  { id: 'automations', label: 'Automations', icon: Workflow, perm: 'workflow:read', component: Automations },
+  { id: 'workflows', label: 'Workflows', icon: Workflow, perm: 'workflow:read', component: Automations },
   { id: 'chat', label: 'Chat', icon: MessageSquare, perm: 'chat:use', component: Chat },
   { id: 'runs', label: 'History', icon: History, perm: 'run:read_own', component: Runs },
   { id: 'agents', label: 'Agents', icon: Bot, perm: 'agent:read', component: Agents },
@@ -33,7 +34,7 @@ const PAGES = [
 ];
 
 function usePage() {
-  const read = () => window.location.hash.replace('#/', '').split('?')[0].split('/')[0] || 'automations';
+  const read = () => window.location.hash.replace('#/', '').split('?')[0].split('/')[0].replace(/^automations$/, 'workflows') || 'workflows';
   const [page, setPage] = useState(read);
   useEffect(() => {
     const onHash = () => setPage(read());
@@ -70,11 +71,8 @@ function SignedInApp() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <aside className="flex w-56 flex-shrink-0 flex-col border-r bg-white">
-        <div className="flex items-center gap-2 px-4 py-4">
-          <div className="rounded-md bg-indigo-600 p-1.5">
-            <Hexagon className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-lg font-bold text-gray-900">AgentOS</span>
+        <div className="px-4 py-4">
+          <Logo />
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
           {visible.map((p) =>

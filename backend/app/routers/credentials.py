@@ -187,7 +187,7 @@ def test_credential(
                 "POST",
                 data["url"],
                 get_settings(db),
-                json_body={"text": "AgentOS test message: this connection works."},
+                json_body={"text": "Star Dust test message: this connection works."},
                 trusted_host=True,
                 timeout=15,
             )
@@ -203,7 +203,7 @@ def test_credential(
                     server.login(data["username"], data.get("password") or "")
             message = "Signed in to the email server."
         else:
-            message = "Saved. This kind of connection is checked when an automation uses it."
+            message = "Saved. This kind of connection is checked when a workflow uses it."
     except safe_http.BlockedRequest as exc:
         ok, message = False, str(exc)
     except smtplib.SMTPAuthenticationError:

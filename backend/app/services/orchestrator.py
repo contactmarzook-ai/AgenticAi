@@ -159,7 +159,7 @@ def handle_message(db: Session, session: ChatSession, user: User, text: str) -> 
                 db,
                 session,
                 f"'{target.name}' needs more information than a chat message ({'; '.join(problems)}). "
-                "Run it from Automations to fill in its form.",
+                "Run it from Workflows to fill in its form.",
                 meta,
             )
     run = create_run(db, target=target, user=user, source="chat", input_data=run_input)

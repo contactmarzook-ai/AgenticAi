@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   name: agentos
   labels:
-    # Enforce the Kubernetes "restricted" Pod Security Standard for AgentOS pods.
+    # Enforce the Kubernetes "restricted" Pod Security Standard for Star Dust pods.
     # Ollama needs "baseline" (it runs as root); if you enable the Ollama component,
     # either keep this at baseline or run Ollama in its own namespace.
     pod-security.kubernetes.io/enforce: baseline
