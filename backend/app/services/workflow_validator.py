@@ -1,98 +1,106 @@
-from typing import Dict, Any, List
+"""Static checks run before a workflow version can be activated or tested."""
+
 from sqlalchemy.orm import Session
-from app.models import Agent
 
-def validate_workflow_definition(definition: Dict[str, Any], db: Session) -> Dict[str, Any]:
-    nodes = definition.get("nodes", [])
-    edges = definition.get("edges", [])
+from ..config import settings
+from ..models import Agent
+from ..tools import registry
+from .workflow_engine import WorkflowError, edge_branch, topological_order
 
+NODE_TYPES = {"input", "agent", "tool", "condition", "transform", "end"}
+MAPPING_SOURCES = {"static", "input", "workflow", "node", "template"}
+
+
+def validate_definition(definition: dict, db: Session) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(definition, dict):
+        return ["Definition must be an object with nodes and edges"]
+    nodes = definition.get("nodes") or []
+    edges = definition.get("edges") or []
     if not nodes:
-        return {"is_valid": False, "errors": ["Workflow must have at least one node."]}
+        return ["Workflow must have at least one node"]
+    if len(nodes) > settings.workflow_max_nodes:
+        errors.append(f"Workflow has {len(nodes)} nodes; the limit is {settings.workflow_max_nodes}")
 
-    errors = []
+    ids = [n.get("id") for n in nodes]
+    if any(not i for i in ids):
+        return ["Every node needs an id"]
+    if len(set(ids)) != len(ids):
+        errors.append("Node ids must be unique")
+    by_id = {n["id"]: n for n in nodes}
 
-    input_nodes = [n for n in nodes if n.get("type") == "input"]
-    end_nodes = [n for n in nodes if n.get("type") == "end"]
+    for e in edges:
+        if e.get("source") not in by_id or e.get("target") not in by_id:
+            errors.append(f"Edge {e.get('id', '?')} points to a node that does not exist")
+    edges = [e for e in edges if e.get("source") in by_id and e.get("target") in by_id]
 
-    if not input_nodes:
-        errors.append("Workflow must have an Input Node.")
-    if not end_nodes:
-        errors.append("Workflow must have an End Node.")
+    inputs = [n for n in nodes if n.get("type") == "input"]
+    ends = [n for n in nodes if n.get("type") == "end"]
+    if len(inputs) != 1:
+        errors.append("Workflow must have exactly one Input node")
+    if not ends:
+        errors.append("Workflow must have at least one End node")
 
-    # Check connected nodes
-    node_ids = {n["id"] for n in nodes}
-    source_edges = {e["source"] for e in edges}
-    target_edges = {e["target"] for e in edges}
-
-    # Build map for type checking
-    agent_cache = {}
-    for n in nodes:
-        if n.get("type") == "agent" and n.get("data", {}).get("agent_id"):
-            agent_cache[n["id"]] = db.query(Agent).filter(Agent.id == n["data"]["agent_id"]).first()
+    has_in = {e["target"] for e in edges}
+    has_out = {e["source"] for e in edges}
 
     for node in nodes:
-        node_id = node["id"]
-        node_type = node.get("type")
+        nid, ntype, data = node["id"], node.get("type"), node.get("data") or {}
+        label = f"{data.get('label') or ntype} ({nid})"
+        if ntype not in NODE_TYPES:
+            errors.append(f"{label}: unknown node type '{ntype}'")
+            continue
+        if ntype == "input" and nid in has_in:
+            errors.append(f"{label}: the Input node cannot have incoming connections")
+        if ntype != "input" and nid not in has_in:
+            errors.append(f"{label}: not connected to anything before it")
+        if ntype != "end" and nid not in has_out:
+            errors.append(f"{label}: not connected to anything after it")
 
-        # Start node shouldn't have targets necessarily, but must have sources
-        if node_type == "input" and node_id not in source_edges:
-            errors.append(f"Input Node {node_id} is disconnected.")
+        for key, m in (data.get("mappings") or {}).items():
+            if not isinstance(m, dict) or m.get("source") not in MAPPING_SOURCES:
+                errors.append(f"{label}: mapping '{key}' has an invalid source")
+            elif m.get("source") == "node" and m.get("node_id") not in by_id:
+                errors.append(f"{label}: mapping '{key}' reads from a node that does not exist")
 
-        if node_type == "end" and node_id not in target_edges:
-            errors.append(f"End Node {node_id} is disconnected.")
-
-        if node_type not in ["input", "end"] and (node_id not in source_edges or node_id not in target_edges):
-            errors.append(f"Node {node_id} ({node_type}) is disconnected.")
-
-        if node_type == "agent":
-            agent_id = node.get("data", {}).get("agent_id")
-            if not agent_id:
-                errors.append(f"Agent Node {node_id} has no agent selected.")
+        if ntype == "agent":
+            agent_id = data.get("agent_id")
+            agent = db.get(Agent, int(agent_id)) if str(agent_id or "").isdigit() else None
+            if agent is None:
+                errors.append(f"{label}: select an agent")
+            elif not agent.is_active:
+                errors.append(f"{label}: agent '{agent.name}' is disabled")
+        elif ntype == "tool":
+            tool = registry.get_tool(str(data.get("tool") or ""))
+            if tool is None:
+                errors.append(f"{label}: select a valid tool")
             else:
-                agent = agent_cache.get(node_id)
-                if not agent or not agent.is_active:
-                    errors.append(f"Agent Node {node_id} references inactive or missing Agent {agent_id}.")
-                elif agent.input_schema:
-                    mappings = node.get("data", {}).get("mappings", {})
-                    for key, val in agent.input_schema.items():
-                        if not isinstance(val, dict):
-                            continue
-                        if val.get("required") == True and key not in mappings:
-                            errors.append(f"Agent Node {node_id} is missing required mapping for '{key}'.")
-                            continue
+                mapped = set((data.get("mappings") or {}).keys())
+                for req in tool.parameters.get("required", []):
+                    if req not in mapped:
+                        errors.append(f"{label}: tool argument '{req}' is not mapped")
+        elif ntype == "condition":
+            cond = data.get("condition") or {}
+            if cond.get("operator") not in {"==", "!=", ">", "<", ">=", "<=", "contains", "is_empty", "not_empty"}:
+                errors.append(f"{label}: choose a condition operator")
+            for e in edges:
+                if e["source"] == nid and edge_branch(e) not in ("true", "false"):
+                    errors.append(f"{label}: every outgoing connection must use the true or false handle")
+                    break
 
-                        mapping = mappings.get(key)
-                        if mapping and mapping.get("source") == "node":
-                            source_node_id = mapping.get("node_id")
-                            source_path = mapping.get("path")
-                            source_agent = agent_cache.get(source_node_id)
-                            if source_agent and source_agent.output_schema and source_path:
-                                source_type = source_agent.output_schema.get(source_path, {}).get("type")
-                                dest_type = val.get("type")
-                                if source_type and dest_type and source_type != dest_type:
-                                    errors.append(f"Incompatible mapping on {node_id}.{key}: Expected {dest_type}, but {source_node_id}.{source_path} outputs {source_type}.")
+    try:
+        order = topological_order(nodes, edges)
+    except WorkflowError:
+        errors.append("Workflow contains a cycle")
+        order = []
 
-    # Basic Cycle detection (BFS/DFS could be used for advanced check, but let's do a simple topological sort attempt)
-    in_degree = {n_id: 0 for n_id in node_ids}
-    graph = {n_id: [] for n_id in node_ids}
-    for e in edges:
-        in_degree[e["target"]] = in_degree.get(e["target"], 0) + 1
-        graph[e["source"]].append(e["target"])
+    if order and len(inputs) == 1:
+        reachable = {inputs[0]["id"]}
+        for nid in order:
+            if any(e["source"] in reachable for e in edges if e["target"] == nid):
+                reachable.add(nid)
+        for nid in by_id:
+            if nid not in reachable:
+                errors.append(f"Node {nid} cannot be reached from the Input node")
 
-    queue = [n for n in node_ids if in_degree[n] == 0]
-    visited = 0
-    while queue:
-        n = queue.pop(0)
-        visited += 1
-        for neighbor in graph.get(n, []):
-            in_degree[neighbor] -= 1
-            if in_degree[neighbor] == 0:
-                queue.append(neighbor)
-
-    if visited != len(node_ids):
-        errors.append("Workflow contains circular paths or unreachable nodes.")
-
-    return {
-        "is_valid": len(errors) == 0,
-        "errors": errors
-    }
+    return errors

@@ -1,259 +1,185 @@
+"""Chat orchestration: decide which agent or workflow handles a message, run it, store the reply.
+
+Routing order:
+1. The session is pinned to an agent  -> use it.
+2. Keyword fast path: exactly one accessible agent/workflow has a matching trigger keyword.
+3. LLM router over the accessible agents/workflows (default model, JSON output, validated).
+4. Nothing fits -> answer directly with the default model as a general assistant.
+"""
+
 import json
-import requests
-import time
-from typing import Dict, Any, Tuple, Optional
+import logging
+import re
+from typing import Optional
+
 from sqlalchemy.orm import Session
 
-from app.models import Agent, Workflow, ChatSession, ChatMessage, User
-from app.services.executor import execute_agent_script
-from app.services.workflow_runner import run_workflow_pipeline
+from ..config import settings
+from ..llm.client import LLMError, get_llm_client
+from ..models import Agent, ChatMessage, ChatSession, Run, User, Workflow, utcnow
+from ..rbac import can_view, has_permission
+from .models_service import ModelNotAvailable, resolve_model, to_target
+from .runs import create_run, execute_run
 
-LLAMA_URL = "http://localhost:11434/api/generate"
+logger = logging.getLogger("agentos.orchestrator")
 
-def build_dynamic_prompt(db: Session) -> str:
-    """
-    Dynamically generates a system prompt based on active DB agents and workflows.
-    Instructs the LLM to act as a router and return strict JSON.
-    """
-    agents = db.query(Agent).filter(Agent.is_active == True).all()
-    workflows = db.query(Workflow).all()
+ROUTER_MIN_CONFIDENCE = 0.6
+GENERAL_SYSTEM_PROMPT = "You are a helpful enterprise assistant. Answer concisely. If you do not know, say so."
 
-    tools_desc = []
 
-    # Format Agents
-    for agent in agents:
-        desc = f"- TYPE: agent | ID: {agent.id} | NAME: {agent.name} | DESC: {agent.description}"
-        if agent.input_schema:
-             desc += f" | SCHEMA: {json.dumps(agent.input_schema)}"
-        tools_desc.append(desc)
+def keywords_of(raw: Optional[str]) -> list[str]:
+    return [k.strip().lower() for k in (raw or "").split(",") if len(k.strip()) >= 3]
 
-    # Format Workflows
-    active_workflows = db.query(Workflow).filter(Workflow.is_active == True).all()
-    for wf in active_workflows:
-         desc = f"- TYPE: workflow | ID: {wf.id} | NAME: {wf.name} | DESC: {wf.description}"
-         tools_desc.append(desc)
 
-    tools_str = "\n".join(tools_desc) if tools_desc else "No tools available."
+def keyword_matches(text: str, raw_keywords: Optional[str]) -> bool:
+    lowered = text.lower()
+    return any(re.search(r"(?<!\w)" + re.escape(k) + r"(?!\w)", lowered) for k in keywords_of(raw_keywords))
 
-    prompt = f"""You are a lightweight, fast AI Router.
-Do NOT perform deep reasoning or generate multi-step plans.
-Your ONLY job is to identify the most appropriate registered tool (agent or workflow) for the user's request and extract parameters.
 
-Available tools:
-{tools_str}
+def accessible_targets(db: Session, user: User) -> tuple[list[Agent], list[Workflow]]:
+    agents, workflows = [], []
+    if has_permission(user, "agent:run"):
+        agents = [a for a in db.query(Agent).filter(Agent.is_active.is_(True)).all() if can_view(user, a)]
+    if has_permission(user, "workflow:run"):
+        workflows = [w for w in db.query(Workflow).filter(Workflow.status == "active").all() if can_view(user, w)]
+    return agents, workflows
 
-You MUST return your response as valid JSON ONLY, with NO markdown formatting, NO backticks, and NO conversational text.
 
-Include a "confidence_score" between 0.0 and 1.0 indicating how well the request matches the tool.
+def fast_path(text: str, agents: list[Agent], workflows: list[Workflow]):
+    matches = [a for a in agents if keyword_matches(text, a.trigger_keywords)]
+    matches += [w for w in workflows if keyword_matches(text, w.trigger_keywords)]
+    return matches[0] if len(matches) == 1 else None
 
-If you clearly map the request to a tool (confidence >= 0.7), return:
-{{"action": "agent" or "workflow", "target_id": integer_id, "parameters": {{"param1": "value1"}}, "confidence_score": float}}
-Note: For workflows, parameters might be optional or empty depending on the first step.
 
-If the request is ambiguous, doesn't clearly match a tool, or your confidence is below 0.7, return:
-{{"action": "clarify", "message": "I'm not sure which tool to use. Could you clarify your request?", "confidence_score": float}}
-
-If it's just a conversational greeting, respond appropriately:
-{{"action": "chat", "message": "Hello! How can I help you today?", "confidence_score": 1.0}}
-"""
-    return prompt
-
-def fast_path_route(user_input: str, db: Session) -> Optional[Dict[str, Any]]:
-    """
-    Attempts to route the request quickly without an LLM by checking agent names and keywords.
-    Returns a routing dictionary if a confident match is found, otherwise None.
-    """
-    user_input_lower = user_input.lower().strip()
-    agents = db.query(Agent).filter(Agent.is_active == True).all()
-    workflows = db.query(Workflow).filter(Workflow.is_active == True).all()
-
-    best_match = None
-    match_type = None
-
-    for agent in agents:
-        # Check exact name match
-        if agent.name.lower() in user_input_lower:
-            best_match = agent
-            match_type = "agent"
-            break
-
-        # Check trigger keywords
-        if agent.trigger_keywords:
-            keywords = [k.strip().lower() for k in agent.trigger_keywords.split(',')]
-            if any(kw in user_input_lower for kw in keywords):
-                best_match = agent
-                match_type = "agent"
-                break
-
-    if not best_match:
-        for wf in workflows:
-            if wf.name.lower() in user_input_lower:
-                best_match = wf
-                match_type = "workflow"
-                break
-
-    if best_match:
-        return {
-            "action": match_type,
-            "target_id": best_match.id,
-            "parameters": {"raw_input": user_input},
-            "confidence_score": 0.9,
-            "routing_method": "fast_path"
-        }
-
-    return None
-
-def call_llama(prompt: str) -> Dict[str, Any]:
-    """
-    Calls local Llama model via Ollama API, enforcing JSON output.
-    """
-    payload = {
-        "model": "llama3",
-        "prompt": prompt,
-        "stream": False,
-        "format": "json"
-    }
-
+def llm_route(db: Session, user: User, text: str, agents: list[Agent], workflows: list[Workflow]):
+    if not agents and not workflows:
+        return None, None
     try:
-        response = requests.post(LLAMA_URL, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
+        model = resolve_model(db, None, user.role)
+    except ModelNotAvailable:
+        return None, None
 
-        content = data.get("response", "{}")
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            return {"action": "error", "message": "Failed to parse LLM output as JSON.", "raw_output": content}
-
-    except requests.exceptions.RequestException as e:
-        return {"action": "error", "message": f"Error communicating with local LLM: {str(e)}"}
-
-def route_and_execute(user_input: str, session_id: int, user: User, db: Session) -> Dict[str, Any]:
-    """
-    Main orchestration pipeline:
-    1. Save user message.
-    2. Build prompt & call LLM.
-    3. Route to execution (Agent or Workflow).
-    4. Save Assistant response & metadata.
-    """
-    # 1. Save user message
-    user_msg = ChatMessage(session_id=session_id, role="user", content=user_input)
-    db.add(user_msg)
-    db.commit()
-
-    # 2. Fast-Path Routing
-    route_response = fast_path_route(user_input, db)
-
-    # 3. LLM Fallback (if fast path fails)
-    llm_duration_sec = 0.0
-    if not route_response:
-        system_prompt = build_dynamic_prompt(db)
-        full_prompt = f"{system_prompt}\n\nUser Request: {user_input}"
-
-        llm_start = time.time()
-        route_response = call_llama(full_prompt)
-        llm_duration_sec = time.time() - llm_start
-
-        route_response["routing_method"] = "llm"
-        route_response["llm_duration_sec"] = llm_duration_sec
-
-    action = route_response.get("action")
-
-    # Setup response payload
-    final_response = {
-        "status": "success",
-        "action": action,
-        "message": "",
-        "execution_trace": None,
-        "llm_reasoning": route_response if route_response.get("routing_method") == "llm" else None
-    }
-
-    metadata = {"routing": route_response}
-
-    # 4. Route Execution
-    confidence = route_response.get("confidence_score", 1.0)
-    agent_duration_sec = 0.0
-
-    agent_start = time.time()
-    if action == "error":
-        final_response["status"] = "error"
-        final_response["message"] = route_response.get("message", "An unknown error occurred.")
-
-    elif action in ["clarify", "chat"]:
-        final_response["message"] = route_response.get("message", "Could you provide more details?")
-
-    elif action in ["agent", "workflow"] and confidence < 0.7:
-        final_response["action"] = "clarify"
-        final_response["message"] = "I'm not confident about which tool to use. Could you clarify your request?"
-
-    elif action == "agent":
-        target_id = route_response.get("target_id")
-        params = route_response.get("parameters", {})
-
-        agent = db.query(Agent).filter(Agent.id == target_id).first()
-        if agent:
-             exe_result = execute_agent_script(agent.handler, params, input_schema=agent.input_schema, output_schema=agent.output_schema)
-             metadata["execution"] = exe_result
-             final_response["execution_trace"] = exe_result
-
-             if exe_result.get("status") == "success":
-                  final_response["message"] = f"Action completed successfully."
-             elif "Missing required field" in exe_result.get("error", ""):
-                  final_response["status"] = "success"
-                  final_response["action"] = "clarify"
-                  missing = exe_result.get("error").split("Missing required field: ")[1].split("'")[1]
-                  final_response["message"] = f"I need a bit more information. Could you please provide the {missing}?"
-             else:
-                  final_response["status"] = "error"
-                  final_response["message"] = f"I encountered an issue processing that request. Please verify your inputs or try again."
-        else:
-             final_response["status"] = "error"
-             final_response["message"] = f"I could not find the requested tool."
-
-    elif action == "workflow":
-        target_id = route_response.get("target_id")
-        params = route_response.get("parameters", {})
-
-        wf = db.query(Workflow).filter(Workflow.id == target_id).first()
-        if wf:
-             exe_result = run_workflow_pipeline(wf.id, params, db)
-             metadata["execution"] = exe_result
-             final_response["execution_trace"] = exe_result
-
-             if exe_result.get("status") == "success":
-                  final_response["message"] = f"Process completed successfully."
-             else:
-                  final_response["status"] = "error"
-                  final_response["message"] = f"I encountered an issue processing that request. Please try again."
-        else:
-             final_response["status"] = "error"
-             final_response["message"] = f"I could not find the requested process."
-    else:
-        final_response["status"] = "error"
-        final_response["message"] = f"Unknown action: {action}"
-
-    agent_duration_sec = time.time() - agent_start
-    metadata["timing"] = {
-        "llm_duration_sec": llm_duration_sec,
-        "agent_duration_sec": agent_duration_sec,
-        "total_duration_sec": llm_duration_sec + agent_duration_sec
-    }
-
-    # 4. Save Assistant message
-    asst_msg = ChatMessage(
-        session_id=session_id,
-        role="assistant",
-        content=final_response["message"],
-        metadata_json=metadata
+    catalog = [
+        {"type": "agent", "id": a.id, "name": a.name, "description": (a.description or "")[:300]} for a in agents
+    ]
+    catalog += [
+        {"type": "workflow", "id": w.id, "name": w.name, "description": (w.description or "")[:300]} for w in workflows
+    ]
+    prompt = (
+        "You route a user's request to one of the tools below, or to none.\n"
+        f"Tools:\n{json.dumps(catalog)}\n\n"
+        'Reply with JSON only: {"type": "agent"|"workflow"|"none", "id": <id or null>, "confidence": <0..1>}.\n'
+        'Use "none" for greetings, general questions, or when no tool clearly fits.'
     )
-    db.add(asst_msg)
+    try:
+        resp = get_llm_client().chat(
+            to_target(model),
+            [{"role": "system", "content": prompt}, {"role": "user", "content": text}],
+            temperature=0,
+            json_mode=True,
+        )
+        decision = json.loads(resp.content)
+        kind, target_id, confidence = decision.get("type"), decision.get("id"), float(decision.get("confidence", 0))
+    except (LLMError, ValueError, TypeError, AttributeError) as exc:
+        logger.warning("LLM routing failed: %s", exc)
+        return None, {"error": str(exc)[:200]}
 
-    # Update session modified time
-    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-    if session:
-         from datetime import datetime, timezone
-         session.updated_at = datetime.now(timezone.utc)
+    info = {"type": kind, "id": target_id, "confidence": confidence}
+    if confidence < ROUTER_MIN_CONFIDENCE:
+        return None, info
+    pool = agents if kind == "agent" else workflows if kind == "workflow" else []
+    return next((t for t in pool if str(t.id) == str(target_id)), None), info
 
+
+def general_answer(db: Session, user: User, history: list[dict], text: str) -> tuple[str, dict]:
+    model = resolve_model(db, None, user.role)
+    messages = [{"role": "system", "content": GENERAL_SYSTEM_PROMPT}, *history, {"role": "user", "content": text}]
+    resp = get_llm_client().chat(to_target(model), messages, temperature=0.3)
+    return resp.content, {
+        "model": model.model_name,
+        "prompt_tokens": resp.prompt_tokens,
+        "completion_tokens": resp.completion_tokens,
+    }
+
+
+def recent_history(db: Session, session_id: int) -> list[dict]:
+    rows = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.id.desc())
+        .limit(settings.chat_history_messages)
+        .all()
+    )
+    return [{"role": m.role, "content": m.content} for m in reversed(rows)]
+
+
+def handle_message(db: Session, session: ChatSession, user: User, text: str) -> ChatMessage:
+    history = recent_history(db, session.id)
+    db.add(ChatMessage(session_id=session.id, role="user", content=text))
     db.commit()
 
-    return final_response
+    agents, workflows = accessible_targets(db, user)
+    target, routing = None, {"method": None}
+
+    if session.agent_id:
+        pinned = next((a for a in agents if a.id == session.agent_id), None)
+        if pinned is None:
+            return _reply(
+                db,
+                session,
+                "The agent pinned to this chat is no longer available to you.",
+                {"routing": {"method": "pinned", "error": "unavailable"}},
+            )
+        target, routing = pinned, {"method": "pinned"}
+    else:
+        target = fast_path(text, agents, workflows)
+        if target is not None:
+            routing = {"method": "keyword"}
+        else:
+            target, info = llm_route(db, user, text, agents, workflows)
+            routing = {"method": "llm" if target else "general", "router": info}
+
+    if target is None:
+        try:
+            answer, meta = general_answer(db, user, history, text)
+        except (ModelNotAvailable, LLMError) as exc:
+            return _reply(db, session, f"Sorry, I can't answer right now: {exc}", {"routing": routing, "error": True})
+        return _reply(db, session, answer, {"routing": routing, **meta})
+
+    kind = "agent" if isinstance(target, Agent) else "workflow"
+    run_input = {"message": text}
+    if kind == "agent":
+        run_input["history"] = history
+    run = create_run(db, target=target, user=user, source="chat", input_data=run_input)
+    execute_run(run.id)
+    db.expire_all()
+    run = db.get(Run, run.id)
+
+    if run.status == "succeeded":
+        out = run.output or {}
+        content = out.get("answer") if kind == "agent" else _format_result(out.get("result"))
+    else:
+        content = f"The {kind} '{target.name}' could not complete this request: {run.error}"
+    meta = {
+        "routing": routing,
+        "target": {"type": kind, "id": target.id, "name": target.name},
+        "run_status": run.status,
+    }
+    return _reply(db, session, content or "(no answer)", meta, run_id=run.id)
+
+
+def _format_result(result) -> str:
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict) and len(result) == 1 and isinstance(next(iter(result.values())), str):
+        return next(iter(result.values()))
+    return "```json\n" + json.dumps(result, indent=2, default=str) + "\n```"
+
+
+def _reply(db: Session, session: ChatSession, content: str, meta: dict, run_id: Optional[int] = None) -> ChatMessage:
+    msg = ChatMessage(session_id=session.id, role="assistant", content=content, run_id=run_id, metadata_json=meta)
+    db.add(msg)
+    session.updated_at = utcnow()
+    db.commit()
+    db.refresh(msg)
+    return msg

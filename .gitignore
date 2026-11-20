@@ -1,12 +1,23 @@
-frontend/node_modules/
-frontend/dist/
-backend/__pycache__/
-backend/*.pyc
-.env
-frontend/dist
-verification/
-*.pyc
+# Python
 __pycache__/
-*.patch
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Misc
+*.log
 *.orig
 *.rej
+.DS_Store
