@@ -265,7 +265,10 @@ FORM_SUBMISSIONS_PER_MINUTE = 20
 def _form_trigger(db: Session, trigger_id: int, token: str) -> Trigger:
     trig = db.get(Trigger, trigger_id)
     if not (
-        trig is not None and trig.type == "form" and trig.is_enabled and trig.webhook_token_hash
+        trig is not None
+        and trig.type == "form"
+        and trig.is_enabled
+        and trig.webhook_token_hash
         and hmac.compare_digest(trig.webhook_token_hash, hash_token(token or ""))
     ):
         raise HTTPException(status_code=404, detail="This form link is not valid or has been switched off")
@@ -288,7 +291,10 @@ def public_form(trigger_id: int, db: Session = Depends(get_db), x_form_token: st
 
 @public.post("/{trigger_id}", status_code=202)
 def submit_public_form(
-    trigger_id: int, body: WorkflowRunRequest, request: Request, db: Session = Depends(get_db),
+    trigger_id: int,
+    body: WorkflowRunRequest,
+    request: Request,
+    db: Session = Depends(get_db),
     x_form_token: str = Header(default=""),
 ):
     trig = _form_trigger(db, trigger_id, x_form_token)
@@ -298,7 +304,9 @@ def submit_public_form(
     try:
         run = start_trigger_run(db, trig, {**(trig.input or {}), **body.input}, "form_link")
     except InputProblem as exc:
-        raise HTTPException(status_code=400, detail={"message": "Please check the form", "errors": exc.problems}) from exc
+        raise HTTPException(
+            status_code=400, detail={"message": "Please check the form", "errors": exc.problems}
+        ) from exc
     if run is None:
         raise HTTPException(status_code=409, detail="This form is not available right now")
     trig.last_run_at = utcnow()
