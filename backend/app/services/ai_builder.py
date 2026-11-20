@@ -46,6 +46,7 @@ Format:
     {{"id": "start", "type": "start", "label": "...", "fields": [{{"key": "snake_case", "label": "...", "type": "text|textarea|number|email|select|boolean|date", "required": true}}]}},
     {{"id": "<short_id>", "type": "action", "action": "<action key from the list>", "label": "...", "config": {{"<field key>": "<value>"}}}},
     {{"id": "<short_id>", "type": "if", "label": "...", "left": "{{{{...}}}}", "operator": "==|!=|>|<|>=|<=|contains|not_contains|is_empty|not_empty", "right": "..."}},
+    {{"id": "<short_id>", "type": "repeat", "label": "...", "items": "{{{{<step id>.<list field>}}}}", "action": "<action key>", "config": {{"<field>": "... {{{{item}}}} ..."}}}},
     {{"id": "<short_id>", "type": "switch", "label": "...", "value": "{{{{...}}}}", "cases": ["a", "b"]}},
     {{"id": "finish", "type": "finish", "label": "...", "output": "{{{{<step id>.<field>}}}}"}}
   ],
@@ -59,6 +60,7 @@ Rules:
 - Refer to data with variables: {{{{input.<form field key>}}}} or {{{{<step id>.<output field>}}}}.
 - "list" fields are JSON arrays of strings; "keyvalue" fields are JSON objects; "credential" fields must be "" (the user picks a connection later).
 - Every step must be linked; every "if" needs both a "true" and a "false" link; every switch case and "default" should be linked.
+- Use "repeat" to apply one action to every item of a list; inside its config, {{{{item}}}} is the current item. Its output is {{"results": [...]}}.
 - Keep it as simple as possible: usually 3-8 steps. Use AI steps for reading, deciding and writing text.
 """
 

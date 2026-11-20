@@ -11,9 +11,9 @@ from ..nodes import NODE_TYPES
 from ..rbac import can_view
 from ..tools import registry
 from .platform_settings import get_settings
-from .workflow_engine import WorkflowError, edge_branch, topological_order
+from .workflow_engine import WorkflowError, edge_branch, topological_order  # noqa: F401
 
-NODE_TYPES_ALLOWED = {"input", "action", "condition", "switch", "end", "agent", "tool", "transform"}
+NODE_TYPES_ALLOWED = {"input", "action", "loop", "condition", "switch", "end", "agent", "tool", "transform"}
 OPERATORS = {"==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", "starts_with", "is_empty", "not_empty"}
 MAPPING_SOURCES = {"static", "input", "workflow", "node", "template"}
 
@@ -107,7 +107,9 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
         if n.type != "end" and n.id not in has_out:
             errors.append(f"{label}: not connected to a next step")
 
-        if n.type == "action":
+        if n.type == "loop" and _empty(data.get("items")):
+            errors.append(f"{label}: choose the list to go through")
+        if n.type in ("action", "loop"):
             ntype = NODE_TYPES.get(str(data.get("action") or ""))
             if ntype is None:
                 errors.append(f"{label}: choose what this step does")
@@ -252,6 +254,8 @@ def reference_problems(definition: Any) -> tuple[list[str], list[str]]:
         for text in _strings({k: v for k, v in data.items() if k not in ("label", "fields")}):
             for m in VAR_RE.finditer(text):
                 root, path = m.group(1), m.group(2).lstrip(".")
+                if root in ("item", "index") and n.get("type") == "loop":
+                    continue
                 if root == "input":
                     field = path.split(".")[0] if path else ""
                     if form_keys and field and field not in form_keys and field != "message":

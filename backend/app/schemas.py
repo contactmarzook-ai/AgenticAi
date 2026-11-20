@@ -238,10 +238,18 @@ class RunSummary(ORM):
 
 
 # ---------- triggers ----------
+class FormOptions(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=200)
+    intro: Optional[str] = Field(default=None, max_length=2000)
+    success_message: Optional[str] = Field(default=None, max_length=1000)
+    show_result: bool = False
+
+
 class TriggerIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     workflow_group_id: str = Field(max_length=32)
-    type: Literal["schedule", "webhook"]
+    type: Literal["schedule", "webhook", "form"]
+    options: Optional[FormOptions] = None
     cron: Optional[str] = Field(default=None, max_length=100)
     timezone: str = Field(default="UTC", max_length=64)
     input: dict[str, Any] = {}
@@ -253,6 +261,7 @@ class TriggerOut(ORM):
     name: str
     workflow_group_id: str
     type: str
+    options: Optional[dict] = None
     cron: Optional[str]
     timezone: str
     input: dict
@@ -264,7 +273,7 @@ class TriggerOut(ORM):
 
 
 class TriggerCreated(TriggerOut):
-    webhook_token: Optional[str] = None  # returned once, on creation / rotation only
+    webhook_token: Optional[str] = None  # webhook/form token: returned once, on creation / rotation only
 
 
 # ---------- chat ----------

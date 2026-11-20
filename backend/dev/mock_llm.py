@@ -160,11 +160,14 @@ async def chat(request: Request):
 
     tool_names = {t["function"]["name"] for t in body.get("tools") or []}
     expr = ARITH.search(text)
-    if "calculator" in tool_names and expr and any(op in expr.group(0) for op in "+-*/%"):
+    if "calculate" in tool_names or "calculator" in tool_names and expr and any(op in expr.group(0) for op in "+-*/%"):
         call = {
             "id": "call_1",
             "type": "function",
-            "function": {"name": "calculator", "arguments": json.dumps({"expression": expr.group(0).strip()})},
+            "function": {
+                "name": "calculate" if "calculate" in tool_names else "calculator",
+                "arguments": json.dumps({"expression": expr.group(0).strip()}),
+            },
         }
         return reply({"content": "", "tool_calls": [call]}, prompt_text)
 

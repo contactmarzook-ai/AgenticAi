@@ -157,11 +157,13 @@ class Trigger(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     workflow_group_id: Mapped[str] = mapped_column(String(32), index=True)  # always runs the active version
-    type: Mapped[str] = mapped_column(String(20))  # schedule | webhook
+    type: Mapped[str] = mapped_column(String(20))  # schedule | webhook | form
     cron: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     input: Mapped[dict] = mapped_column(JSON, default=dict)
     webhook_token_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    # Public form options: {"title", "intro", "success_message", "show_result"}
+    options: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

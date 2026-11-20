@@ -41,7 +41,7 @@ def test_request_shape_and_tool_call_parsing():
     resp = client_with(handler).chat(TARGET, [{"role": "user", "content": "hi"}], tools=tools)
     assert seen["url"] == "http://llm.test/v1/chat/completions"
     assert seen["auth"] == "Bearer secret"
-    assert seen["body"]["tools"][0]["function"]["name"] == "calculator"
+    assert seen["body"]["tools"][0]["function"]["name"] == "calculate"  # unified with the Calculate step
     assert resp.tool_calls[0].name == "calculator"
     assert json.loads(resp.tool_calls[0].arguments) == {"expression": "1+1"}  # dict args normalised to JSON
     assert (resp.prompt_tokens, resp.completion_tokens) == (12, 3)
@@ -106,7 +106,7 @@ def test_render_template():
 def test_http_get_disabled_without_allowlist():
     with pytest.raises(registry.ToolError) as exc:
         registry.execute("http_get", {"url": "http://169.254.169.254/latest"})
-    assert "disabled" in str(exc.value)
+    assert "not on the allowed list" in str(exc.value)
 
 
 def test_http_get_enforces_allowlist():
@@ -121,3 +121,16 @@ def test_http_get_enforces_allowlist():
     assert "not on the allowed list" in str(exc.value)
     with pytest.raises(registry.ToolError):
         registry.execute("http_get", {"url": "file:///etc/passwd"})
+
+
+def test_agent_tools_follow_admin_step_switches():
+    from app.database import SessionLocal
+    from app.services.platform_settings import save_settings
+
+    assert registry.get_tool("render_template").name == "fill_template"  # old names are aliases
+    db = SessionLocal()
+    save_settings(db, {"disabled_nodes": ["calculate"]})
+    db.close()
+    with pytest.raises(registry.ToolError) as exc:
+        registry.execute("calculator", {"expression": "1+1"})
+    assert "disabled by your administrator" in str(exc.value)

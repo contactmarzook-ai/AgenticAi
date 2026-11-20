@@ -59,12 +59,30 @@ def tool(name: str, description: str, parameters: dict, min_role: str = "builder
     return wrap
 
 
+def canonical(name: str) -> str:
+    from .builtin import ALIASES
+
+    return ALIASES.get(name, name)
+
+
 def get_tool(name: str) -> Tool | None:
-    return _REGISTRY.get(name)
+    return _REGISTRY.get(canonical(name))
 
 
 def list_tools() -> list[Tool]:
     return sorted(_REGISTRY.values(), key=lambda t: t.name)
+
+
+def _legacy_args(name: str, args: dict) -> dict:
+    """Map arguments of the old tool names onto the unified steps."""
+    if name == "http_get":
+        return {"url": args.get("url"), "method": "GET"}
+    return args
+
+
+def list_tools_for(settings: dict) -> list[Tool]:
+    disabled = set(settings.get("disabled_nodes") or [])
+    return [t for t in list_tools() if t.name not in disabled]
 
 
 def validate_args(tool_obj: Tool, args: Any) -> None:
@@ -80,6 +98,8 @@ def execute(name: str, args: Any, timeout: float | None = None) -> Any:
     tool_obj = get_tool(name)
     if tool_obj is None:
         raise ToolError(f"Unknown tool '{name}'")
+    if name != tool_obj.name and isinstance(args, dict):
+        args = _legacy_args(name, args)
     validate_args(tool_obj, args)
     future = _executor.submit(tool_obj.fn, **args)
     try:

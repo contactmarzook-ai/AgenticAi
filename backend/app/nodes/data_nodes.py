@@ -5,7 +5,8 @@ import string
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..tools import registry as tools
+from ..safe_eval import EvalError
+from ..safe_eval import calculate as safe_calculate
 from .base import Field, NodeContext, NodeError, node
 
 
@@ -84,8 +85,8 @@ def parse_json(cfg: dict, ctx: NodeContext):
 )
 def calculate(cfg: dict, ctx: NodeContext):
     try:
-        return {"result": tools.execute("calculator", {"expression": str(cfg["expression"])})["result"]}
-    except tools.ToolError as exc:
+        return {"result": safe_calculate(str(cfg["expression"]))}
+    except EvalError as exc:
         raise NodeError(str(exc)) from exc
 
 

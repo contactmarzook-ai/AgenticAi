@@ -297,3 +297,73 @@ def test_connection_checks(client, admin):
     cred = make_smtp(client, admin)
     res = client.post(f"/api/credentials/{cred['id']}/test", headers=admin).json()
     assert res["ok"] is False and "Could not reach" in res["message"]
+
+
+def test_repeat_for_each(client, admin, llm):
+    llm.handler = lambda m, t, j: LLMResponse(content="hi " + m[-1]["content"].split()[-1])
+    d = {
+        "nodes": [
+            start([{"key": "names", "label": "Names", "type": "textarea"}]),
+            step("split", "text_tools", {"text": "{{input.names}}", "operation": "split", "find": ","}),
+            {
+                "id": "each",
+                "type": "loop",
+                "data": {
+                    "label": "Greet each",
+                    "items": "{{split.result}}",
+                    "action": "ai_prompt",
+                    "config": {"instruction": "Greet #{{index}} {{item}}"},
+                },
+            },
+            finish("{{each.results}}"),
+        ],
+        "edges": [link("start", "split"), link("split", "each"), link("each", "finish")],
+    }
+    _, run = save_and_test(client, admin, d, {"names": "Ann, Bo"})
+    run = run.json()
+    assert run["status"] == "succeeded", run
+    assert run["output"]["result"] == [{"text": "hi Ann"}, {"text": "hi Bo"}]
+    assert run["llm_calls"] == 2
+    bad = {
+        **d,
+        "nodes": [
+            *d["nodes"][:2],
+            {"id": "each", "type": "loop", "data": {"label": "L", "items": "", "action": "nope"}},
+            d["nodes"][3],
+        ],
+    }
+    wf = client.post("/api/workflows", headers=admin, json={"name": "bad", "definition": bad}).json()
+    text = " | ".join(client.post(f"/api/workflows/{wf['id']}/validate", headers=admin).json()["errors"])
+    assert "choose the list" in text and "choose what this step does" in text
+
+
+def test_public_form_link(client, admin, llm):
+    d = chain(
+        start([{"key": "name", "label": "Name", "type": "text", "required": True}]),
+        step("c", "compose_text", {"template": "Welcome {{input.name}}"}),
+        finish("{{c.text}}"),
+    )
+    wf = client.post("/api/workflows", headers=admin, json={"name": "Signup", "definition": d}).json()
+    client.post(f"/api/workflows/{wf['id']}/activate", headers=admin)
+    trig = client.post(
+        "/api/triggers",
+        headers=admin,
+        json={
+            "name": "Public signup",
+            "workflow_group_id": wf["group_id"],
+            "type": "form",
+            "options": {"title": "Join us", "show_result": True, "success_message": "Done!"},
+        },
+    ).json()
+    token = trig["webhook_token"]
+    assert token.startswith("frm_")
+    anon = {"X-Form-Token": token}
+    assert client.get(f"/api/public/forms/{trig['id']}").status_code == 404
+    form = client.get(f"/api/public/forms/{trig['id']}", headers=anon).json()
+    assert form["title"] == "Join us" and form["fields"][0]["key"] == "name"
+    r = client.post(f"/api/public/forms/{trig['id']}", headers=anon, json={"input": {}})
+    assert r.status_code == 400 and "'Name' is required" in json.dumps(r.json())
+    r = client.post(f"/api/public/forms/{trig['id']}", headers=anon, json={"input": {"name": "Ann"}}).json()
+    assert r == {"status": "done", "message": "Done!", "result": "Welcome Ann"}
+    runs = client.get("/api/runs?source=form_link", headers=admin).json()
+    assert runs["total"] == 1

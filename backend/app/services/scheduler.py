@@ -66,7 +66,7 @@ def start_trigger_run(db: Session, trigger: Trigger, input_data: dict, source: s
         return None
     cleaned, problems = check_input(wf.definition or {}, input_data)
     if problems:
-        if source == "webhook":
+        if source in ("webhook", "form_link"):
             raise InputProblem(problems)
         # A schedule cannot ask anyone for input: record a failed run so the owner sees why.
         run = create_run(db, target=wf, user=owner, source=source, input_data=input_data, trigger_id=trigger.id)

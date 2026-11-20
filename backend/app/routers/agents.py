@@ -9,7 +9,7 @@ from ..rbac import ROLE_LEVEL, can_edit, can_view, require_permission
 from ..schemas import AgentIn, AgentOut, AgentRunRequest, RunOut
 from ..services.models_service import role_may_use
 from ..services.runs import create_run, enforce_rate_limit, execute_run
-from ..tools.registry import get_tool
+from ..tools.registry import canonical, get_tool
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -39,6 +39,7 @@ def _validate(db: Session, body: AgentIn, user: User) -> None:
                 status_code=400,
                 detail=f"Model '{model.display_name}' does not support tool calling; remove the tools or pick another model",
             )
+    body.tools = list(dict.fromkeys(canonical(n) for n in body.tools))  # store current names
     for name in body.tools:
         t = get_tool(name)
         if t is None:

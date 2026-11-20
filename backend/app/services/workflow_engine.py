@@ -8,6 +8,8 @@ Node types:
              Text in `config` may contain {{ }} variables.
   condition  If: data.condition = {left, operator, right}. Outgoing edges use handle "true"/"false".
   switch     data = {value, cases: [..]}. Outgoing edges use a case value or "default".
+  loop       Repeat for each: data = {items, action, config}; runs the action once per item,
+             with {{item}} and {{index}} available. Output = {results: [...], count, errors}.
   end        Finish. data.config.output (optional) chooses what to return.
   agent / tool / transform   older node types, still supported.
 
@@ -35,6 +37,8 @@ ToolCaller = Callable[[str, dict], Any]
 ActionCaller = Callable[[str, dict, dict], Any]  # (action key, resolved config, node) -> output
 
 BRANCHING = {"condition", "switch"}
+# Pseudo-roots available only inside a Repeat step.
+LOOP_ROOTS = {"item", "index"}
 
 
 class WorkflowError(Exception):
@@ -324,6 +328,48 @@ def run_definition(
     return {"output": final_output if final_output is not None else last_output, "steps": steps}
 
 
+MAX_LOOP_ITEMS = 200
+
+
+def _run_loop(data, outputs, workflow_input, call_action, node, step):
+    """Repeat for each: run one catalogue step for every item of a list.
+    Inside the step, {{item}} / {{item.field}} is the current item and {{index}} its position (from 1)."""
+    if call_action is None:
+        raise WorkflowError("Repeat steps are not available here")
+    items = resolve_value(data.get("items", ""), outputs, workflow_input)
+    if isinstance(items, str):
+        text = items.strip()
+        if text.startswith("["):
+            try:
+                items = json.loads(text)
+            except ValueError:
+                items = None
+        if isinstance(items, str):
+            items = [line.strip() for line in text.splitlines() if line.strip()]
+    if isinstance(items, dict):
+        items = [items]
+    if items is None:
+        items = []
+    if not isinstance(items, list):
+        raise WorkflowError("'List to go through' did not produce a list")
+    if len(items) > MAX_LOOP_ITEMS:
+        raise WorkflowError(f"The list has {len(items)} items; the limit is {MAX_LOOP_ITEMS}")
+    continue_on_error = bool((data.get("settings") or {}).get("item_errors_continue"))
+    results, errors = [], 0
+    step["input"] = {"items": len(items), "action": data.get("action")}
+    for i, item in enumerate(items, start=1):
+        scope = {**outputs, "item": item, "index": i}
+        config = resolve_value(data.get("config") or {}, scope, workflow_input)
+        try:
+            results.append(_wrap(call_action(str(data.get("action") or ""), config, node)))
+        except Exception as exc:  # noqa: BLE001
+            if not continue_on_error:
+                raise WorkflowError(f"Item {i}: {exc}") from exc
+            errors += 1
+            results.append({"error": str(exc)})
+    return {"results": results, "count": len(results), "errors": errors}
+
+
 def _execute_node(
     ntype,
     data,
@@ -351,6 +397,9 @@ def _execute_node(
 
     if ntype == "condition":
         return {"result": evaluate_condition(data.get("condition") or {}, outputs, workflow_input)}
+
+    if ntype == "loop":
+        return _run_loop(data, outputs, workflow_input, call_action, node, step)
 
     if ntype == "switch":
         value = resolve_value(data.get("value", ""), outputs, workflow_input)

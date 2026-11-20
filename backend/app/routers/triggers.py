@@ -1,5 +1,6 @@
 import hmac
 import json
+from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -7,13 +8,13 @@ from sqlalchemy.orm import Session
 
 from ..audit import audit
 from ..database import get_db
-from ..models import Trigger, User, Workflow, utcnow
+from ..models import Run, Trigger, User, Workflow, utcnow
 from ..rbac import can_edit, can_view, require_permission
-from ..schemas import RunOut, TriggerCreated, TriggerIn, TriggerOut
+from ..schemas import RunOut, TriggerCreated, TriggerIn, TriggerOut, WorkflowRunRequest
 from ..security import hash_token, new_webhook_token
-from ..services.form_input import check_input
-from ..services.runs import submit_run
-from ..services.scheduler import InputProblem, next_fire_time, start_trigger_run, valid_cron
+from ..services.form_input import check_input, form_fields
+from ..services.runs import execute_run, submit_run
+from ..services.scheduler import InputProblem, active_version, next_fire_time, start_trigger_run, valid_cron
 
 router = APIRouter(prefix="/api/triggers", tags=["triggers"])
 hooks = APIRouter(prefix="/api/hooks", tags=["webhooks"])
@@ -100,14 +101,15 @@ def create_trigger(
     _check_workflow(db, user, body.workflow_group_id)
     _validate(body)
     _check_schedule_input(db, body)
-    trig = Trigger(**body.model_dump(), owner_id=user.id)
+    trig = Trigger(**body.model_dump(exclude={"options"}), owner_id=user.id)
+    trig.options = body.options.model_dump() if body.options and body.type == "form" else None
     token = None
     if body.type == "schedule":
         trig.next_run_at = next_fire_time(body.cron, body.timezone) if body.is_enabled else None
         trig.cron = body.cron
     else:
         trig.cron = None
-        token = new_webhook_token()
+        token = new_webhook_token() if body.type == "webhook" else "frm_" + new_webhook_token()[4:]
         trig.webhook_token_hash = hash_token(token)
     db.add(trig)
     db.flush()
@@ -141,6 +143,8 @@ def update_trigger(
     _check_schedule_input(db, body)
     for k in ("name", "cron", "timezone", "input", "is_enabled"):
         setattr(trig, k, getattr(body, k))
+    if trig.type == "form":
+        trig.options = body.options.model_dump() if body.options else trig.options
     if trig.type == "schedule":
         trig.next_run_at = next_fire_time(trig.cron, trig.timezone) if trig.is_enabled else None
     audit(
@@ -164,8 +168,8 @@ def rotate_token(
     user: User = Depends(require_permission("trigger:write")),
 ):
     trig = _visible_trigger(db, trigger_id, user)
-    if trig.type != "webhook":
-        raise HTTPException(status_code=400, detail="Only webhook triggers have tokens")
+    if trig.type not in ("webhook", "form"):
+        raise HTTPException(status_code=400, detail="Only webhooks and form links have tokens")
     token = new_webhook_token()
     trig.webhook_token_hash = hash_token(token)
     audit(db, "trigger.rotate_token", user=user, resource_type="trigger", resource_id=trig.id, request=request)
@@ -251,3 +255,62 @@ def receive_webhook(
     )
     submit_run(run.id)
     return run
+
+
+# ---------------- public form links (no sign-in) ----------------
+public = APIRouter(prefix="/api/public/forms", tags=["public forms"])
+FORM_SUBMISSIONS_PER_MINUTE = 20
+
+
+def _form_trigger(db: Session, trigger_id: int, token: str) -> Trigger:
+    trig = db.get(Trigger, trigger_id)
+    if not (
+        trig is not None and trig.type == "form" and trig.is_enabled and trig.webhook_token_hash
+        and hmac.compare_digest(trig.webhook_token_hash, hash_token(token or ""))
+    ):
+        raise HTTPException(status_code=404, detail="This form link is not valid or has been switched off")
+    return trig
+
+
+@public.get("/{trigger_id}")
+def public_form(trigger_id: int, db: Session = Depends(get_db), x_form_token: str = Header(default="")):
+    trig = _form_trigger(db, trigger_id, x_form_token)
+    wf = active_version(db, trig.workflow_group_id)
+    if wf is None:
+        raise HTTPException(status_code=404, detail="This form is not available right now")
+    opts = trig.options or {}
+    return {
+        "title": opts.get("title") or wf.name,
+        "intro": opts.get("intro") or wf.description or "",
+        "fields": form_fields(wf.definition or {}),
+    }
+
+
+@public.post("/{trigger_id}", status_code=202)
+def submit_public_form(
+    trigger_id: int, body: WorkflowRunRequest, request: Request, db: Session = Depends(get_db),
+    x_form_token: str = Header(default=""),
+):
+    trig = _form_trigger(db, trigger_id, x_form_token)
+    recent = db.query(Run).filter(Run.trigger_id == trig.id, Run.created_at >= utcnow() - timedelta(minutes=1)).count()
+    if recent >= FORM_SUBMISSIONS_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Too many submissions right now. Please try again in a minute.")
+    try:
+        run = start_trigger_run(db, trig, {**(trig.input or {}), **body.input}, "form_link")
+    except InputProblem as exc:
+        raise HTTPException(status_code=400, detail={"message": "Please check the form", "errors": exc.problems}) from exc
+    if run is None:
+        raise HTTPException(status_code=409, detail="This form is not available right now")
+    trig.last_run_at = utcnow()
+    audit(db, "form.submit", resource_type="trigger", resource_id=trig.id, details={"run_id": run.id}, request=request)
+    opts = trig.options or {}
+    message = opts.get("success_message") or "Thank you - your submission was received."
+    if not opts.get("show_result"):
+        submit_run(run.id)
+        return {"status": "received", "message": message}
+    execute_run(run.id)
+    db.expire_all()
+    run = db.get(Run, run.id)
+    if run.status != "succeeded":
+        return {"status": "failed", "message": "Sorry, something went wrong while processing your submission."}
+    return {"status": "done", "message": message, "result": (run.output or {}).get("result")}

@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends
 from ..models import User
 from ..rbac import ROLE_LEVEL, require_permission
 from ..schemas import ToolOut
-from ..tools.registry import list_tools
+from ..services.platform_settings import get_settings
+from ..tools.registry import list_tools_for
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
 
@@ -14,6 +15,6 @@ def get_tools(user: User = Depends(require_permission("tool:read"))):
     level = ROLE_LEVEL[user.role]
     return [
         ToolOut(name=t.name, description=t.description, parameters=t.parameters, min_role=t.min_role)
-        for t in list_tools()
+        for t in list_tools_for(get_settings())
         if ROLE_LEVEL.get(t.min_role, 99) <= level
     ]

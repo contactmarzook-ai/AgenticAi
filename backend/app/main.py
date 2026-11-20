@@ -108,6 +108,7 @@ def create_app() -> FastAPI:
     ):
         app.include_router(module.router)
     app.include_router(triggers.hooks)
+    app.include_router(triggers.public)
     app.include_router(workflows.templates_router)
 
     @app.get("/healthz", include_in_schema=False)

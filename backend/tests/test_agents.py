@@ -88,7 +88,7 @@ def test_tool_calling_loop(client, admin, llm):
     def handler(messages, tools, json_mode):
         if messages[-1]["role"] == "tool":
             return LLMResponse(content=f"The total is {messages[-1]['content']}")
-        assert tools and tools[0]["function"]["name"] == "calculator"
+        assert tools and tools[0]["function"]["name"] == "calculate"
         return tool_call("calculator", {"expression": "2 + 3 * 4"})
 
     llm.handler = handler

@@ -19,6 +19,7 @@ from ..llm.client import LLMError, get_llm_client
 from ..models import Agent
 from ..tools import registry
 from .models_service import resolve_model, to_target
+from .platform_settings import get_settings
 
 MAX_TOOL_RESULT_CHARS = 8000
 
@@ -60,7 +61,12 @@ def run_agent(
     deadline = time.monotonic() + settings.agent_timeout_seconds
     max_steps = max(1, min(agent.max_steps or 1, settings.agent_max_steps_cap))
 
-    tool_names = [t for t in (agent.tools or []) if registry.get_tool(t)]
+    disabled = set(get_settings(db).get("disabled_nodes") or [])
+    tool_names = []
+    for t in agent.tools or []:
+        name = registry.canonical(t)
+        if registry.get_tool(name) and name not in disabled and name not in tool_names:
+            tool_names.append(name)
     tool_specs = [registry.get_tool(t).openai_spec() for t in tool_names] if model.supports_tools else []
 
     messages: list[dict] = []
@@ -112,6 +118,7 @@ def run_agent(
         )
         for c in resp.tool_calls:
             started = time.monotonic()
+            c.name = registry.canonical(c.name)
             step = {"type": "tool", "name": c.name}
             try:
                 if c.name not in tool_names:

@@ -90,6 +90,10 @@ def to_definition(blueprint: dict) -> dict:
             data["action"] = str(step.get("action") or "")
             data["config"] = step.get("config") if isinstance(step.get("config"), dict) else {}
             data["settings"] = step.get("settings") if isinstance(step.get("settings"), dict) else {}
+        elif ntype == "loop":
+            data["items"] = str(step.get("items", ""))
+            data["action"] = str(step.get("action") or "")
+            data["config"] = step.get("config") if isinstance(step.get("config"), dict) else {}
         elif ntype == "condition":
             data["condition"] = {
                 "left": str(step.get("left", "")),
