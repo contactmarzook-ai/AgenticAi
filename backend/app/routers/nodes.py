@@ -18,7 +18,5 @@ def catalog(db: Session = Depends(get_db), user: User = Depends(require_permissi
     disabled = set(get_settings(db).get("disabled_nodes") or [])
     nodes = []
     for nt in sorted(NODE_TYPES.values(), key=lambda n: (CATEGORY_ORDER.index(n.category), n.name)):
-        if nt.key in disabled and user.role != "admin":
-            continue
         nodes.append({**nt.to_dict(), "disabled": nt.key in disabled})
     return {"nodes": nodes, "credential_types": [c.to_dict() for c in CREDENTIAL_TYPES.values()]}

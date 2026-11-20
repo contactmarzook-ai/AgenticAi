@@ -68,7 +68,8 @@ def test_admin_can_disable_steps(client, admin, make_user):
     assert client.put("/api/settings", headers=admin, json={"disabled_nodes": ["nope"]}).status_code == 400
     r = client.put("/api/settings", headers=admin, json={"disabled_nodes": ["http_request"]})
     assert r.status_code == 200 and r.json()["disabled_nodes"] == ["http_request"]
-    assert "http_request" not in {n["key"] for n in client.get("/api/nodes", headers=builder).json()["nodes"]}
+    catalog = {n["key"]: n for n in client.get("/api/nodes", headers=builder).json()["nodes"]}
+    assert catalog["http_request"]["disabled"] is True  # still described, so existing steps stay readable
 
     d = chain(start(), step("h", "http_request", {"url": "https://example.com"}), finish())
     _, run = save_and_test(client, builder, d)

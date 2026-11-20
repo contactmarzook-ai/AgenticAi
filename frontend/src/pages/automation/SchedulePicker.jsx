@@ -102,7 +102,11 @@ export default function SchedulePicker({ cron, onChange }) {
           {DAYS.map(([v, label]) => {
             const on = (s.days || ['1']).includes(v);
             return (
-              <button key={v} type="button" onClick={() => update({ days: on ? (s.days || ['1']).filter((d) => d !== v) : [...(s.days || ['1']), v] })}
+              <button key={v} type="button" onClick={() => {
+                  const days = s.days || ['1'];
+                  if (on && days.length === 1) return; // at least one day stays selected
+                  update({ days: on ? days.filter((d) => d !== v) : [...days, v] });
+                }}
                 className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'text-gray-600'}`}>
                 {label}
               </button>

@@ -52,6 +52,14 @@ credential_type(
 )
 
 
+def _http_problem(exc: Exception) -> str:
+    if isinstance(exc, httpx.TimeoutException):
+        return "The server did not answer in time"
+    if isinstance(exc, httpx.ConnectError):
+        return "Could not connect to the server (check the address)"
+    return "The request failed before the server answered"
+
+
 def _auth_from(ctx: NodeContext, credential_id) -> tuple[dict, tuple | None]:
     if not credential_id:
         return {}, None
@@ -113,7 +121,7 @@ def http_request(cfg: dict, ctx: NodeContext):
     except safe_http.BlockedRequest as exc:
         raise NodeError(str(exc)) from exc
     except httpx.HTTPError as exc:
-        raise NodeError(f"Request failed: {exc.__class__.__name__}") from exc
+        raise NodeError(_http_problem(exc)) from exc
     text = resp.text
     try:
         parsed = resp.json()
@@ -170,7 +178,7 @@ def send_email(cfg: dict, ctx: NodeContext):
         raise NodeError("Email could not be sent: the server refused the recipient address") from exc
     except (smtplib.SMTPException, OSError) as exc:
         raise NodeError(
-            f"Email could not be sent: could not reach the email server '{host}:{port}' ({exc.__class__.__name__}). "
+            f"Email could not be sent: could not reach the email server '{host}:{port}'. "
             "Check the server name and port in the connection."
         ) from exc
     return {"sent": True, "to": recipients + cc}
@@ -182,7 +190,7 @@ def _post_webhook(url: str, payload: dict, ctx: NodeContext) -> dict:
     except safe_http.BlockedRequest as exc:
         raise NodeError(str(exc)) from exc
     except httpx.HTTPError as exc:
-        raise NodeError(f"Request failed: {exc.__class__.__name__}") from exc
+        raise NodeError(_http_problem(exc)) from exc
     if resp.status_code >= 400:
         raise NodeError(f"Webhook answered HTTP {resp.status_code}: {resp.text[:200]}")
     return {"sent": True, "status": resp.status_code}

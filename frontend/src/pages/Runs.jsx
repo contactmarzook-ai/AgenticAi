@@ -6,6 +6,7 @@ import { Alert, Badge, Button, JsonBlock, Modal, PageHeader, Select, StatusBadge
 import RunSteps from './RunSteps';
 
 const PAGE = 50;
+const SOURCE_LABELS = { form: 'Run form', form_link: 'Public form link', chat: 'Chat', schedule: 'Schedule', webhook: 'Webhook', test: 'Test', api: 'API' };
 
 export default function Runs({ user }) {
   const hashParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
@@ -56,7 +57,7 @@ export default function Runs({ user }) {
           </Select></div>
           <div className="w-44"><Select value={filters.source} onChange={(e) => setFilter('source', e.target.value)}>
             <option value="">Any source</option>
-            {['form', 'form_link', 'chat', 'api', 'test', 'schedule', 'webhook'].map((s) => <option key={s}>{s}</option>)}
+            {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </Select></div>
           {filters.group_id && (
             <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
@@ -73,7 +74,7 @@ export default function Runs({ user }) {
             { key: 'id', label: '#' },
             { key: 'created_at', label: 'Started', render: (r) => formatDate(r.created_at) },
             { key: 'target', label: 'What', render: (r) => <><Badge>{r.target_type === 'workflow' ? 'workflow' : r.target_type}</Badge> {r.target_name}</> },
-            { key: 'source', label: 'Source' },
+            { key: 'source', label: 'Started by', render: (r) => SOURCE_LABELS[r.source] || r.source },
             { key: 'status', label: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'tokens', label: 'Tokens', render: (r) => r.prompt_tokens + r.completion_tokens },
             { key: 'error', label: 'Error', className: 'max-w-xs truncate text-red-600', render: (r) => r.error || '' },

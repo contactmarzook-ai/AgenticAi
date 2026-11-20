@@ -10,6 +10,7 @@ from ..models import Agent, Credential, User
 from ..nodes import NODE_TYPES
 from ..rbac import can_view
 from ..tools import registry
+from .form_input import EMAIL_RE
 from .platform_settings import get_settings
 from .workflow_engine import WorkflowError, edge_branch, topological_order  # noqa: F401
 
@@ -144,7 +145,12 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
             cases = data.get("cases") or []
             if not isinstance(cases, list) or not [c for c in cases if str(c).strip()]:
                 errors.append(f"{label}: add at least one case")
-            valid = {str(c).strip().lower() for c in cases if str(c).strip()} | {"default"}
+            names = [str(c).strip().lower() for c in cases if str(c).strip()] if isinstance(cases, list) else []
+            if len(set(names)) != len(names):
+                errors.append(f"{label}: two paths have the same name")
+            if "default" in names:
+                errors.append(f"{label}: 'default' is reserved; give the path another name")
+            valid = set(names) | {"default"}
             for e in edges:
                 if e.source == n.id and edge_branch(e.model_dump()) not in valid:
                     errors.append(f"{label}: a connection leaves from a case that no longer exists")
@@ -197,6 +203,8 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
             cred = db.get(Credential, int(notify["credential_id"]))
             if cred.type == "smtp" and _empty(notify.get("email_to")):
                 errors.append("Failure alerts: enter the email address to notify")
+            elif cred.type == "smtp" and not EMAIL_RE.match(str(notify.get("email_to")).strip()):
+                errors.append("Failure alerts: the alert address is not a valid email address")
 
     errors.extend(reference_problems(definition)[0])
     return errors

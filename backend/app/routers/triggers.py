@@ -170,7 +170,7 @@ def rotate_token(
     trig = _visible_trigger(db, trigger_id, user)
     if trig.type not in ("webhook", "form"):
         raise HTTPException(status_code=400, detail="Only webhooks and form links have tokens")
-    token = new_webhook_token()
+    token = new_webhook_token() if trig.type == "webhook" else "frm_" + new_webhook_token()[4:]
     trig.webhook_token_hash = hash_token(token)
     audit(db, "trigger.rotate_token", user=user, resource_type="trigger", resource_id=trig.id, request=request)
     db.refresh(trig)

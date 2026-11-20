@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BaseEdge, Background, Controls, EdgeLabelRenderer, Handle, Position, ReactFlow, addEdge, getBezierPath, useEdgesState,
-  useNodesState,
+  useNodesState, useUpdateNodeInternals,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -50,11 +50,17 @@ function handlesOf(node) {
   return [null];
 }
 
-function StepNode({ data, type, selected }) {
+function StepNode({ id, data, type, selected }) {
   const m = data._meta || {};
   const Icon = m.icon || Play;
   const StatusIcon = STATUS_ICON[data._status];
   const cases = type === 'switch' ? [...(data.cases || []).filter((c) => String(c).trim()), 'default'] : [];
+  // Switch handles change with the path names: tell React Flow so connections are redrawn.
+  const updateInternals = useUpdateNodeInternals();
+  const handleKey = cases.join('|');
+  useEffect(() => {
+    if (type === 'switch') updateInternals(id);
+  }, [handleKey, id, type, updateInternals]);
   return (
     <div className={cx('w-56 rounded-lg border-2 bg-white px-3 py-2 shadow-sm', selected ? m.style?.border : 'border-gray-200')}>
       {type !== 'input' && <Handle type="target" position={Position.Top} />}
@@ -78,10 +84,10 @@ function StepNode({ data, type, selected }) {
       {type === 'switch' && (
         <>
           {cases.map((c, i) => (
-            <Handle key={c} type="source" position={Position.Bottom} id={c} style={{ left: `${((i + 1) * 100) / (cases.length + 1)}%`, background: c === 'default' ? '#6b7280' : '#d97706' }} />
+            <Handle key={`${i}-${c}`} type="source" position={Position.Bottom} id={c} style={{ left: `${((i + 1) * 100) / (cases.length + 1)}%`, background: c === 'default' ? '#6b7280' : '#d97706' }} />
           ))}
           <div className="mt-1 flex justify-around text-[10px] font-semibold text-amber-700">
-            {cases.map((c) => <span key={c} className="max-w-[4rem] truncate">{c}</span>)}
+            {cases.map((c, i) => <span key={`${i}-${c}`} className="max-w-[4rem] truncate">{c}</span>)}
           </div>
         </>
       )}
@@ -146,7 +152,7 @@ function renameRefs(value, from, to) {
   return value;
 }
 
-const draftKey = (id) => `agentos.unsaved.${id ?? 'new'}`;
+const draftKey = (userId, id) => `agentos.unsaved.${userId}.${id ?? 'new'}`;
 
 export default function FlowBuilder({ workflow, draft, catalog, credentialTypes, agents, user, onBack, onSaved, onOpenVersion }) {
   const initial = draft?.definition || (workflow?.definition?.nodes?.length ? workflow.definition : blank());
@@ -172,6 +178,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   const [restore, setRestore] = useState(null);
   const [history, setHistory] = useState({ undo: [], redo: [] });
   const lastSnap = useRef(0);
+  const draftKeys = useRef(new Set());
   const setGlobalDirty = useUnsaved((s) => s.setDirty);
 
   const editable = !current || current.can_edit;
@@ -206,9 +213,15 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
       }
     };
     window.addEventListener('beforeunload', onUnload);
+    const keys = draftKeys.current;
     return () => {
       window.removeEventListener('beforeunload', onUnload);
       setGlobalDirty(false);
+      try {
+        for (const k of keys) localStorage.removeItem(k);
+      } catch {
+        /* ignore */
+      }
     };
   }, [setGlobalDirty]);
 
@@ -216,24 +229,25 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   useEffect(() => {
     if (draft) return;
     try {
-      const saved = JSON.parse(localStorage.getItem(draftKey(workflow?.id)) || 'null');
+      const saved = JSON.parse(localStorage.getItem(draftKey(user.id, workflow?.id)) || 'null');
       if (saved) setTimeout(() => setRestore(saved), 0);
     } catch {
       /* ignore */
     }
-  }, [workflow?.id, draft]);
+  }, [workflow?.id, draft, user.id]);
 
   useEffect(() => {
     if (!dirty) return undefined;
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(draftKey(current?.id ?? workflow?.id), JSON.stringify({ name, meta: meta_, settings: flowSettings, definition: clean(nodes, edges), at: Date.now() }));
+        draftKeys.current.add(draftKey(user.id, current?.id ?? workflow?.id));
+        localStorage.setItem(draftKey(user.id, current?.id ?? workflow?.id), JSON.stringify({ name, meta: meta_, settings: flowSettings, definition: clean(nodes, edges), at: Date.now() }));
       } catch {
         /* storage full or unavailable */
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [dirty, nodes, edges, name, meta_, flowSettings, current?.id, workflow?.id]);
+  }, [dirty, nodes, edges, name, meta_, flowSettings, current?.id, workflow?.id, user.id]);
 
   // ---------- undo / redo ----------
   const snapshot = useCallback((throttle = false) => {
@@ -333,8 +347,9 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
       const used = new Set(edges.filter((e) => e.source === anchor.id).map((e) => e.sourceHandle || null));
       const free = handles.findIndex((h) => !used.has(h));
       const h = free === -1 ? null : handles[free];
-      const x = anchor.position.x + (free === -1 ? 300 : (free - (handles.length - 1) / 2) * 260);
+      const x = anchor.position.x + (free === -1 ? 320 + (nodes.length % 3) * 40 : (free - (handles.length - 1) / 2) * 260);
       setNodes((nds) => [...nds, { id, type, position: { x, y: anchor.position.y + 140 }, data }]);
+      if (free === -1) setNotice({ kind: 'info', text: `Every path of “${anchor.data?.label}” is already connected, so the new step was placed on the right. Connect it where it belongs (click a connection and × to remove one).` });
       // A new branch also leads on to Finish (when there is just one), so the path is complete.
       const finishes = nodes.filter((n) => n.type === 'end');
       const onward = type !== 'end' && !BRANCHING.includes(type) && finishes.length === 1
@@ -389,6 +404,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
     const onKey = (e) => {
       const tag = (e.target?.tagName || '').toLowerCase();
       if (['input', 'textarea', 'select'].includes(tag) || e.target?.isContentEditable || !editable) return;
+      if (document.querySelector('[role=dialog]')) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -421,7 +437,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
       const saved = current && isDraft ? (await api.put(`/workflows/${current.id}`, body())).data : (await api.post('/workflows', { ...body(), group_id: current?.group_id })).data;
       const newVersion = current && saved.id !== current.id;
       try {
-        localStorage.removeItem(draftKey(current?.id ?? workflow?.id));
+        localStorage.removeItem(draftKey(user.id, current?.id ?? workflow?.id));
       } catch {
         /* ignore */
       }
@@ -479,12 +495,14 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
     }
   };
 
+  const fallbackVersion = live || [...versions].filter((v) => v.id !== current?.id).sort((a, b) => b.version - a.version)[0];
+  const newerDraft = current && current.status !== 'draft' ? versions.find((v) => v.status === 'draft' && v.version > current.version) : null;
   const discardDraft = async () => {
-    if (!current || current.status !== 'draft' || !live || !confirm('Discard this draft and go back to the live version?')) return;
+    if (!current || current.status !== 'draft' || !fallbackVersion || !confirm(`Discard this draft and go back to version ${fallbackVersion.version}?`)) return;
     await api.delete(`/workflows/${current.id}`);
     setDirty(false);
     onSaved?.();
-    onOpenVersion?.(live);
+    onOpenVersion?.(fallbackVersion);
   };
 
   const openTest = async () => {
@@ -504,7 +522,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   };
   const dropRestore = () => {
     try {
-      localStorage.removeItem(draftKey(workflow?.id));
+      localStorage.removeItem(draftKey(user.id, workflow?.id));
     } catch {
       /* ignore */
     }
@@ -549,13 +567,19 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
             </>
           )}
           {current && editable && can(user, 'trigger:write') && <Button variant="secondary" icon={Clock} onClick={() => setTriggersOpen(true)}>How it starts</Button>}
-          {editable && current?.status === 'draft' && live && <Button variant="ghost" onClick={discardDraft}>Discard draft</Button>}
+          {editable && current?.status === 'draft' && fallbackVersion && <Button variant="ghost" onClick={discardDraft}>Discard draft</Button>}
           {editable && can(user, 'workflow:activate') && live && (current?.id !== live.id || !dirty) && <Button variant="secondary" icon={Power} onClick={turnOff}>Turn off</Button>}
           {editable && can(user, 'workflow:activate') && (current?.status !== 'active' || dirty) && (
             <Button icon={Rocket} loading={busy === 'publish'} onClick={publish}>{statusLabel === 'off' && !dirty ? 'Turn on' : 'Publish'}</Button>
           )}
         </div>
       </div>
+      {newerDraft && (
+        <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm text-blue-900">
+          You are looking at version {current.version}. There is a newer draft (version {newerDraft.version}); saving here would start yet another draft.
+          <Button variant="secondary" onClick={() => { if (!dirty || confirm('Open the draft without saving?')) { setDirty(false); onOpenVersion?.(newerDraft); } }}>Open the draft</Button>
+        </div>
+      )}
       {restore && (
         <div className="flex flex-wrap items-center gap-2 border-b bg-amber-50 px-4 py-2 text-sm text-amber-900">
           You have unsaved changes from {new Date(restore.at).toLocaleString()}.
@@ -645,7 +669,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
                 agents={agents}
                 credentialTypes={credentialTypes}
                 onChange={(patch) => updateData(selected.id, patch)}
-                onTriggers={current ? () => setTriggersOpen(true) : null}
+                onTriggers={current && editable ? () => setTriggersOpen(true) : null}
                 onRenameCase={(from, to) => renameCase(selected.id, from, to)}
                 onDropCase={(v) => dropCase(selected.id, v)}
                 onRenameField={renameField}
@@ -744,6 +768,7 @@ function AutomationSettings({ meta, setMeta, settings, setSettings, editable, la
 
 function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange, onTriggers, onRenameCase, onDropCase, onRenameField }) {
   const data = node.data || {};
+  const [caseError, setCaseError] = useState('');
 
   if (node.type === 'input') {
     const fields = data.fields || [];
@@ -853,17 +878,35 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
 
   if (node.type === 'switch') {
     const cases = data.cases || [];
+    const clash = (value, index) => {
+      const v = value.trim().toLowerCase();
+      return v === 'default' || cases.some((x, j) => j !== index && String(x).trim().toLowerCase() === v);
+    };
     return (
       <div className="space-y-3">
         <Field label="Route by this value"><VarText value={data.value || ''} groups={groups} placeholder="{{classify.category}}" onChange={(v) => onChange({ value: v })} /></Field>
         <div className="text-xs font-semibold uppercase text-gray-500">Paths</div>
         {cases.map((c, i) => (
           <div key={i} className="flex gap-1">
-            <Input value={c} maxLength={60} onChange={(e) => { onRenameCase(c, e.target.value); onChange({ cases: cases.map((x, j) => (j === i ? e.target.value : x)) }); }} />
+            <Input value={c} maxLength={60} onChange={(e) => {
+              const v = e.target.value;
+              if (clash(v, i)) {
+                setCaseError(v.trim().toLowerCase() === 'default' ? "'default' is reserved for everything else" : 'Each path needs a different name');
+                return;
+              }
+              setCaseError('');
+              onRenameCase(c, v);
+              onChange({ cases: cases.map((x, j) => (j === i ? v : x)) });
+            }} />
             <button type="button" className="p-1 text-gray-400 hover:text-red-600" onClick={() => { onDropCase(c); onChange({ cases: cases.filter((_, j) => j !== i) }); }} aria-label="Remove path"><X className="h-4 w-4" /></button>
           </div>
         ))}
-        <Button variant="secondary" icon={Plus} onClick={() => onChange({ cases: [...cases, `option ${cases.length + 1}`] })}>Add path</Button>
+        {caseError && <p className="text-xs text-red-600">{caseError}</p>}
+        <Button variant="secondary" icon={Plus} onClick={() => {
+          let n = cases.length + 1;
+          while (clash(`option ${n}`, -1)) n += 1;
+          onChange({ cases: [...cases, `option ${n}`] });
+        }}>Add path</Button>
         <p className="text-xs text-gray-500">Each path gets its own dot under the step; anything else goes to <b>default</b>. Matching ignores upper/lower case.</p>
       </div>
     );

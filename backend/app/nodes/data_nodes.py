@@ -78,7 +78,7 @@ def parse_json(cfg: dict, ctx: NodeContext):
     "calculate",
     "Calculate",
     "Data",
-    "Do arithmetic, e.g. {{input.amount}} * 0.18",
+    "Do arithmetic, e.g. 1200 * 0.18. Data from earlier steps can be used in the formula.",
     "calculator",
     [Field("expression", "Formula", "text", required=True, placeholder="{{input.amount}} * 1.18")],
     output_hint="{ result }",
@@ -170,7 +170,7 @@ def text_tools(cfg: dict, ctx: NodeContext):
 
 @node(
     "fill_template",
-    "Fill template ($name)",
+    "Fill template",
     "Data",
     "Fill a template that uses $placeholders from a set of values.",
     "file-pen",

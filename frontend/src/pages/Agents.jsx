@@ -196,8 +196,8 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
               <label key={t.name} className="flex cursor-pointer gap-2 rounded-md border p-2 text-sm hover:bg-gray-50">
                 <input type="checkbox" className="mt-0.5" disabled={toolsBlocked} checked={form.tools.includes(t.name)} onChange={() => toggleTool(t.name)} />
                 <span>
-                  <span className="font-mono text-gray-900">{t.name}</span>
-                  <span className="block text-xs text-gray-500">{t.description}</span>
+                  <span className="font-medium text-gray-900">{t.description.split(':')[0]}</span>
+                  <span className="block text-xs text-gray-500">{t.description.split(':').slice(1).join(':').trim() || t.description}</span>
                 </span>
               </label>
             ))}

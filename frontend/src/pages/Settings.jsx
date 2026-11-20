@@ -28,6 +28,7 @@ export default function Settings() {
   };
 
   const save = async () => {
+    if (!s.run_retention_days && !confirm('Run history will be kept forever (0 days). Continue?')) return;
     setSaving(true);
     try {
       const body = { ...s, http_allowed_hosts: hosts.split(/[\n,]/).map((h) => h.trim()).filter(Boolean) };

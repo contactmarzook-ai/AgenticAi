@@ -82,7 +82,7 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
       <div className="space-y-4">
         {!isLive && <Alert kind="info">This workflow is not live yet. Anything you add here starts working once you <b>Publish</b>.</Alert>}
         <p className="text-sm text-gray-500">People can always run it from the Workflows list or from chat. Add more ways below.</p>
-        <Alert>{error}</Alert>
+        {!form && <Alert>{error}</Alert>}
         {secret && (
           <Alert kind="success">
             <div className="space-y-2">
@@ -164,6 +164,7 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
             )}
             {form.type === 'webhook' && <p className="text-xs text-gray-500">The JSON body of each call is used as the form values.</p>}
             <div className="flex gap-2">
+              {error && <div className="flex-1"><Alert>{error}</Alert></div>}
               <Button onClick={save}>{form.id ? 'Save' : 'Add'}</Button>
               <Button variant="secondary" onClick={() => setForm(null)}>Cancel</Button>
             </div>

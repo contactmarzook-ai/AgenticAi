@@ -74,7 +74,12 @@ def list_workflows(
     out = []
     for versions in groups.values():
         current = [w for w in versions if w.status != "archived"]
-        out.extend(current or [max(versions, key=lambda w: w.version)])
+        archived = [w for w in versions if w.status == "archived"]
+        out.extend(current)
+        # No live version: also return the newest old version, so a turned-off workflow
+        # (even one with a leftover draft) can be turned back on from the list.
+        if archived and not any(w.status == "active" for w in current):
+            out.append(max(archived, key=lambda w: w.version))
     return [_out(w, user) for w in out]
 
 

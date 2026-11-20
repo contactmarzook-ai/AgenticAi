@@ -367,3 +367,48 @@ def test_public_form_link(client, admin, llm):
     assert r == {"status": "done", "message": "Done!", "result": "Welcome Ann"}
     runs = client.get("/api/runs?source=form_link", headers=admin).json()
     assert runs["total"] == 1
+
+
+def test_switch_path_names_must_be_unique_and_not_default(client, admin):
+    d = {
+        "nodes": [
+            start(),
+            {"id": "sw", "type": "switch", "data": {"label": "Route", "value": "x", "cases": ["a", "A", "default"]}},
+            finish(),
+        ],
+        "edges": [link("start", "sw"), link("sw", "finish", "a")],
+    }
+    wf = client.post("/api/workflows", headers=admin, json={"name": "S", "definition": d}).json()
+    text = " | ".join(client.post(f"/api/workflows/{wf['id']}/validate", headers=admin).json()["errors"])
+    assert "two paths have the same name" in text and "'default' is reserved" in text
+
+
+def test_turned_off_workflow_with_leftover_draft_can_be_turned_on(client, admin):
+    wf = client.post("/api/workflows", headers=admin, json={"name": "W", "definition": chain(start(), finish())}).json()
+    client.post(f"/api/workflows/{wf['id']}/activate", headers=admin)
+    client.post(
+        "/api/workflows",
+        headers=admin,
+        json={"name": "W", "group_id": wf["group_id"], "definition": chain(start(), finish())},
+    )
+    client.post(f"/api/workflows/{wf['id']}/deactivate", headers=admin)
+    listed = sorted((w["version"], w["status"]) for w in client.get("/api/workflows", headers=admin).json())
+    assert listed == [(1, "archived"), (2, "draft")]
+
+
+def test_alert_email_must_be_valid(client, admin):
+    cred = make_smtp(client, admin)
+    d = chain(start(), finish())
+    d["settings"] = {"notify_on_failure": {"credential_id": cred["id"], "email_to": "not-an-email"}}
+    wf = client.post("/api/workflows", headers=admin, json={"name": "A", "definition": d}).json()
+    errors = client.post(f"/api/workflows/{wf['id']}/validate", headers=admin).json()["errors"]
+    assert "Failure alerts: the alert address is not a valid email address" in errors
+
+
+def test_rotated_form_link_keeps_form_prefix(client, admin):
+    wf = client.post("/api/workflows", headers=admin, json={"name": "F", "definition": chain(start(), finish())}).json()
+    trig = client.post(
+        "/api/triggers", headers=admin, json={"name": "f", "workflow_group_id": wf["group_id"], "type": "form"}
+    ).json()
+    rotated = client.post(f"/api/triggers/{trig['id']}/rotate-token", headers=admin).json()
+    assert rotated["webhook_token"].startswith("frm_")

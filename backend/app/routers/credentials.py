@@ -208,8 +208,8 @@ def test_credential(
         ok, message = False, str(exc)
     except smtplib.SMTPAuthenticationError:
         ok, message = False, "The email server rejected the username or password."
-    except (OSError, smtplib.SMTPException, httpx.HTTPError) as exc:
-        ok, message = False, f"Could not reach the server ({exc.__class__.__name__}). Check the address and port."
+    except (OSError, smtplib.SMTPException, httpx.HTTPError):
+        ok, message = False, "Could not reach the server. Check the server address and port."
     audit(
         db,
         "connection.test",

@@ -32,6 +32,12 @@ export const useAuth = create((set) => ({
   setUser: (user) => set({ user }),
   logout: (opts = {}) => {
     writeToken(null);
+    try {
+      // Unsaved builder drafts belong to the person who signed out.
+      Object.keys(localStorage).filter((k) => k.startsWith('agentos.unsaved.')).forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* ignore */
+    }
     set({ token: null, user: null, expired: !!opts.expired });
   },
 }));

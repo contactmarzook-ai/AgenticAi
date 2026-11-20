@@ -41,7 +41,12 @@ function usePage() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  return [page, (p) => { if (confirmLeave()) window.location.hash = `#/${p}`; }];
+  return [page, (p) => {
+    if (!confirmLeave()) return;
+    // Clicking the page you are on goes back to its start (e.g. leaves the workflow builder).
+    if (p === read()) window.dispatchEvent(new Event('stardust:home'));
+    else window.location.hash = `#/${p}`;
+  }];
 }
 
 export default function App() {
@@ -57,7 +62,7 @@ function SignedInApp() {
 
   useEffect(() => {
     if (token && !user) {
-      api.get('/auth/me').then((r) => setUser(r.data)).catch(() => logout());
+      api.get('/auth/me').then((r) => setUser(r.data)).catch(() => logout({ expired: true }));
     }
   }, [token, user, setUser, logout]);
 

@@ -40,6 +40,16 @@ export default function Automations({ user }) {
   }, []);
 
   useEffect(() => {
+    const home = () => {
+      window.history.replaceState(null, '', '#/workflows');
+      setOpen(undefined);
+      load();
+    };
+    window.addEventListener('stardust:home', home);
+    return () => window.removeEventListener('stardust:home', home);
+  }, [load]);
+
+  useEffect(() => {
     load();
     api.get('/nodes').then((r) => setCatalog(r.data)).catch(() => {});
     api.get('/agents').then((r) => setAgents(r.data)).catch(() => {});
@@ -54,7 +64,7 @@ export default function Automations({ user }) {
     return [...byGroup.values()]
       .map((versions) => {
         versions.sort((a, b) => b.version - a.version);
-        return { latest: versions[0], live: versions.find((v) => v.status === 'active') };
+        return { latest: versions[0], live: versions.find((v) => v.status === 'active'), lastOff: versions.find((v) => v.status === 'archived') };
       })
       .sort((a, b) => new Date(b.latest.updated_at) - new Date(a.latest.updated_at))
       .filter(({ latest, live }) => `${(live || latest).name} ${(live || latest).description || ''}`.toLowerCase().includes(query.toLowerCase()));
@@ -205,9 +215,9 @@ export default function Automations({ user }) {
             <Empty>{canBuild ? 'Nothing yet. Describe one above or pick a template.' : 'No workflows are shared with you yet.'}</Empty>
           ) : (
             <div className="divide-y rounded-xl border bg-white">
-              {groups.map(({ latest, live }) => {
+              {groups.map(({ latest, live, lastOff }) => {
                 const wf = live || latest;
-                const off = !live && latest.status === 'archived';
+                const off = !live && !!lastOff;
                 const isOwner = user.role === 'admin' || latest.owner_id === user.id;
                 return (
                   <div key={latest.group_id} className="flex flex-wrap items-center gap-2 px-5 py-4">
@@ -215,14 +225,14 @@ export default function Automations({ user }) {
                       <div className="flex items-center gap-2">
                         <button className="truncate font-medium text-gray-900 hover:underline" onClick={() => setOpen({ workflow: latest })}>{wf.name}</button>
                         {live ? <Badge color="green">live</Badge> : off ? <Badge color="red">off</Badge> : <Badge color="yellow">draft</Badge>}
-                        {live && latest.id !== live.id && <Badge>newer draft</Badge>}
+                        {(live || off) && latest.status === 'draft' && <Badge>newer draft</Badge>}
                       </div>
                       <p className="truncate text-sm text-gray-500">{wf.description || 'No description'}</p>
                       <p className="text-xs text-gray-400">Updated {formatDate(latest.updated_at)}</p>
                     </div>
                     {live && can(user, 'workflow:run') && <Button variant="secondary" icon={Play} onClick={() => setRunning(live)}>Run</Button>}
-                    {off && latest.can_edit && can(user, 'workflow:activate') && (
-                      <Button variant="secondary" icon={Power} onClick={() => act(() => api.post(`/workflows/${latest.id}/activate`), `“${wf.name}” is live again.`)}>Turn on</Button>
+                    {off && lastOff.can_edit && can(user, 'workflow:activate') && (
+                      <Button variant="secondary" icon={Power} onClick={() => act(() => api.post(`/workflows/${lastOff.id}/activate`), `“${wf.name}” (version ${lastOff.version}) is live again.`)}>Turn on</Button>
                     )}
                     <Button variant="ghost" onClick={() => setOpen({ workflow: latest })}>{latest.can_edit ? 'Edit' : 'View'}</Button>
                     <button title="History" aria-label="History" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => { window.location.hash = `#/runs?group=${latest.group_id}&name=${encodeURIComponent(wf.name)}`; }}><History className="h-4 w-4" /></button>
