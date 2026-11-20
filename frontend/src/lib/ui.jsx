@@ -81,7 +81,7 @@ export function Badge({ color = 'gray', children }) {
 }
 
 export function StatusBadge({ status }) {
-  const color = { succeeded: 'green', success: 'green', active: 'green', failed: 'red', failure: 'red', denied: 'red', running: 'blue', queued: 'yellow', draft: 'yellow', archived: 'gray' }[status] || 'gray';
+  const color = { succeeded: 'green', success: 'green', active: 'green', live: 'green', failed: 'red', failure: 'red', denied: 'red', off: 'red', running: 'blue', queued: 'yellow', draft: 'yellow', archived: 'gray', 'old version': 'gray', error_continued: 'yellow', skipped: 'gray' }[status] || 'gray';
   return <Badge color={color}>{status}</Badge>;
 }
 
@@ -172,6 +172,6 @@ export function formatDate(value) {
 
 export function JsonBlock({ value }) {
   return (
-    <pre className="max-h-80 overflow-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{JSON.stringify(value, null, 2)}</pre>
+    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-900 p-3 text-xs text-gray-100">{JSON.stringify(value, null, 2)}</pre>
   );
 }

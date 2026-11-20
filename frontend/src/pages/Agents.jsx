@@ -204,17 +204,6 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Trigger keywords" hint="Comma separated. Chat messages containing one go straight to this agent.">
-            <Input value={form.trigger_keywords} onChange={(e) => set('trigger_keywords', e.target.value)} />
-          </Field>
-          <Field label="Temperature">
-            <Input type="number" min="0" max="2" step="0.1" value={form.temperature} onChange={(e) => set('temperature', e.target.value)} />
-          </Field>
-          <Field label="Max tool steps">
-            <Input type="number" min="1" max="50" value={form.max_steps} onChange={(e) => set('max_steps', e.target.value)} />
-          </Field>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
           <Field label="Who can use it">
             <Select value={form.visibility} onChange={(e) => set('visibility', e.target.value)}>
               <option value="private">Only me (and admins)</option>
@@ -229,6 +218,22 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
             <Checkbox label="Enabled" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
           </div>
         </div>
+        <details className="rounded-md border p-3 text-sm">
+          <summary className="cursor-pointer text-gray-600">Advanced</summary>
+          <div className="mt-3">
+            <div className="grid gap-4 md:grid-cols-3">
+          <Field label="Chat keywords" hint="Comma separated. Messages containing one go straight to this agent (otherwise the AI decides).">
+            <Input value={form.trigger_keywords} onChange={(e) => set('trigger_keywords', e.target.value)} />
+          </Field>
+          <Field label="Temperature">
+            <Input type="number" min="0" max="2" step="0.1" value={form.temperature} onChange={(e) => set('temperature', e.target.value)} />
+          </Field>
+          <Field label="Max tool steps">
+            <Input type="number" min="1" max="50" value={form.max_steps} onChange={(e) => set('max_steps', e.target.value)} />
+          </Field>
+        </div>
+          </div>
+        </details>
       </div>
     </Modal>
   );

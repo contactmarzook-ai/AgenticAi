@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Checkbox, Field, Input, Select, Textarea } from '../../lib/ui';
 
 /** The Start step's form, filled in by whoever runs the automation. Falls back to raw JSON. */
-export default function RunForm({ fields, value, onChange }) {
+export default function RunForm({ fields, value, onChange, hideJson }) {
   const [raw, setRaw] = useState(false);
   const [text, setText] = useState(JSON.stringify(value || {}, null, 2));
   const [bad, setBad] = useState(false);
@@ -64,9 +64,11 @@ export default function RunForm({ fields, value, onChange }) {
           </Field>
         );
       })}
-      <button type="button" className="text-xs text-gray-500 hover:underline" onClick={() => { setText(JSON.stringify(value || {}, null, 2)); setRaw(true); }}>
-        Edit as JSON
-      </button>
+      {!hideJson && (
+        <button type="button" className="text-xs text-gray-500 hover:underline" onClick={() => { setText(JSON.stringify(value || {}, null, 2)); setRaw(true); }}>
+          Edit as JSON
+        </button>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Alert, Button, Field, Input } from '../lib/ui';
 
 export default function Login() {
   const setToken = useAuth((s) => s.setToken);
+  const expired = useAuth((s) => s.expired);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,6 +35,7 @@ export default function Login() {
           </div>
           <h1 className="text-xl font-semibold text-gray-900">Sign in to AgentOS</h1>
         </div>
+        {expired && !error && <Alert kind="info">Your session ended. Please sign in again.</Alert>}
         <Alert>{error}</Alert>
         <Field label="Email">
           <Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />

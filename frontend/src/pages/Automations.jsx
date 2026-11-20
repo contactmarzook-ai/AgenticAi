@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { LayoutTemplate, Play, Plus, Search, Sparkles, Wand2 } from 'lucide-react';
+import { Copy, Download, History, LayoutTemplate, Play, Plus, Power, Search, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
 import api, { errorMessage } from '../lib/api';
 import { can } from '../lib/auth';
 import { Alert, Badge, Button, Empty, Modal, StatusBadge, formatDate } from '../lib/ui';
@@ -29,8 +29,15 @@ export default function Automations({ user }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [info, setInfo] = useState('');
 
   const load = useCallback(() => api.get('/workflows').then((r) => setWorkflows(r.data)).catch((e) => setError(errorMessage(e))), []);
+
+  // Deep link: #/automations/<id> reopens the builder after a refresh.
+  useEffect(() => {
+    const m = window.location.hash.match(/^#\/automations\/(\d+)/);
+    if (m) api.get(`/workflows/${m[1]}`).then((r) => setOpen({ workflow: r.data })).catch(() => window.history.replaceState(null, '', '#/automations'));
+  }, []);
 
   useEffect(() => {
     load();
@@ -49,6 +56,7 @@ export default function Automations({ user }) {
         versions.sort((a, b) => b.version - a.version);
         return { latest: versions[0], live: versions.find((v) => v.status === 'active') };
       })
+      .sort((a, b) => new Date(b.latest.updated_at) - new Date(a.latest.updated_at))
       .filter(({ latest, live }) => `${(live || latest).name} ${(live || latest).description || ''}`.toLowerCase().includes(query.toLowerCase()));
   }, [workflows, query]);
 
@@ -66,7 +74,10 @@ export default function Automations({ user }) {
     }
   };
 
+  const [creating, setCreating] = useState(false);
   const applyTemplate = async (t) => {
+    if (creating) return;
+    setCreating(true);
     try {
       const wf = (await api.post(`/templates/${t.key}/use`)).data;
       setShowTemplates(false);
@@ -74,7 +85,45 @@ export default function Automations({ user }) {
       setOpen({ workflow: wf });
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      setCreating(false);
     }
+  };
+
+  const act = async (fn, okMsg) => {
+    setError('');
+    try {
+      await fn();
+      if (okMsg) setInfo(okMsg);
+      load();
+    } catch (err) {
+      setError(err?.response || err?.request ? errorMessage(err) : err.message);
+    }
+  };
+
+  const exportJson = (wf) => {
+    const blob = new Blob([JSON.stringify({ agentos: 1, name: wf.name, description: wf.description, definition: wf.definition }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${wf.name.replace(/[^\w-]+/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const importJson = (file) => {
+    const reader = new FileReader();
+    reader.onload = () => act(async () => {
+      let data;
+      try {
+        data = JSON.parse(reader.result);
+      } catch {
+        throw new Error('That file is not an AgentOS automation (not valid JSON).');
+      }
+      if (!data?.definition?.nodes) throw new Error('That file is not an AgentOS automation.');
+      const wf = (await api.post('/workflows', { name: data.name || file.name, description: data.description || null, definition: data.definition })).data;
+      setOpen({ workflow: wf });
+    });
+    reader.readAsText(file);
   };
 
   if (open !== undefined) {
@@ -89,7 +138,8 @@ export default function Automations({ user }) {
           agents={agents}
           user={user}
           onSaved={load}
-          onBack={() => { setOpen(undefined); load(); }}
+          onBack={() => { window.history.replaceState(null, '', '#/automations'); setOpen(undefined); load(); }}
+          onOpenVersion={(v) => setOpen({ workflow: v })}
         />
       </Suspense>
     );
@@ -108,6 +158,7 @@ export default function Automations({ user }) {
               <>
                 <textarea
                   value={prompt}
+                  maxLength={4000}
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={3}
                   placeholder="e.g. When a customer emails a complaint, summarize it, decide how urgent it is, and post urgent ones to Slack"
@@ -130,6 +181,10 @@ export default function Automations({ user }) {
               )}
               <Button variant="secondary" icon={LayoutTemplate} onClick={() => setShowTemplates(true)}>Start from a template</Button>
               <Button variant="ghost" icon={Plus} onClick={() => setOpen({})}>Start blank</Button>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100">
+                <Upload className="h-4 w-4" /> Import
+                <input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) importJson(e.target.files[0]); e.target.value = ''; }} />
+              </label>
             </div>
             <div className="mt-3"><Alert>{error}</Alert></div>
           </section>
@@ -138,6 +193,7 @@ export default function Automations({ user }) {
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-gray-900">Your automations</h2>
+            {info && <span className="text-sm text-green-700">{info}</span>}
             {groups.length > 4 || query ? (
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-4 w-4 text-gray-400" />
@@ -151,19 +207,33 @@ export default function Automations({ user }) {
             <div className="divide-y rounded-xl border bg-white">
               {groups.map(({ latest, live }) => {
                 const wf = live || latest;
+                const off = !live && latest.status === 'archived';
+                const isOwner = user.role === 'admin' || latest.owner_id === user.id;
                 return (
-                  <div key={latest.group_id} className="flex flex-wrap items-center gap-4 px-5 py-4">
+                  <div key={latest.group_id} className="flex flex-wrap items-center gap-2 px-5 py-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{wf.name}</span>
-                        {live ? <Badge color="green">live</Badge> : <Badge color="yellow">draft</Badge>}
+                        <button className="truncate font-medium text-gray-900 hover:underline" onClick={() => setOpen({ workflow: latest })}>{wf.name}</button>
+                        {live ? <Badge color="green">live</Badge> : off ? <Badge color="red">off</Badge> : <Badge color="yellow">draft</Badge>}
                         {live && latest.id !== live.id && <Badge>newer draft</Badge>}
                       </div>
                       <p className="truncate text-sm text-gray-500">{wf.description || 'No description'}</p>
                       <p className="text-xs text-gray-400">Updated {formatDate(latest.updated_at)}</p>
                     </div>
                     {live && can(user, 'workflow:run') && <Button variant="secondary" icon={Play} onClick={() => setRunning(live)}>Run</Button>}
+                    {off && latest.can_edit && can(user, 'workflow:activate') && (
+                      <Button variant="secondary" icon={Power} onClick={() => act(() => api.post(`/workflows/${latest.id}/activate`), `“${wf.name}” is live again.`)}>Turn on</Button>
+                    )}
                     <Button variant="ghost" onClick={() => setOpen({ workflow: latest })}>{latest.can_edit ? 'Edit' : 'View'}</Button>
+                    <button title="History" aria-label="History" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => { window.location.hash = `#/runs?group=${latest.group_id}&name=${encodeURIComponent(wf.name)}`; }}><History className="h-4 w-4" /></button>
+                    {canBuild && <button title="Duplicate" aria-label="Duplicate" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => act(() => api.post(`/workflows/${wf.id}/duplicate`), `Copied “${wf.name}”.`)}><Copy className="h-4 w-4" /></button>}
+                    {canBuild && <button title="Export as a file" aria-label="Export" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => exportJson(latest)}><Download className="h-4 w-4" /></button>}
+                    {canBuild && isOwner && (
+                      <button title="Delete" aria-label="Delete" className="rounded p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"
+                        onClick={() => confirm(`Delete “${wf.name}” with all its versions, schedules, form links and webhooks? Run history is kept.`) && act(() => api.delete(`/workflows/groups/${latest.group_id}`), `Deleted “${wf.name}”.`)}>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -176,7 +246,7 @@ export default function Automations({ user }) {
         <Modal wide title="Templates" onClose={() => setShowTemplates(false)}>
           <div className="grid gap-3 md:grid-cols-2">
             {templates.map((t) => (
-              <button key={t.key} onClick={() => applyTemplate(t)} className="rounded-lg border p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40">
+              <button key={t.key} disabled={creating} onClick={() => applyTemplate(t)} className="rounded-lg border p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40">
                 <div className="text-xs font-medium uppercase text-gray-400">{t.category}</div>
                 <div className="font-medium text-gray-900">{t.name}</div>
                 <p className="mt-1 text-sm text-gray-600">{t.description}</p>
@@ -213,7 +283,7 @@ function RunAutomation({ workflow, onClose }) {
     }
     setError('');
     try {
-      setRun((await api.post(`/workflows/${workflow.id}/run`, { input })).data);
+      setRun((await api.post(`/workflows/${workflow.id}/run`, { input, from_form: true })).data);
     } catch (err) {
       setError(errorMessage(err));
     }

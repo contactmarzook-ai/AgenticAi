@@ -8,7 +8,10 @@ import RunSteps from './RunSteps';
 const PAGE = 50;
 
 export default function Runs({ user }) {
-  const [filters, setFilters] = useState({ status: '', target_type: '', source: '' });
+  const hashParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
+  const [filters, setFilters] = useState({ status: '', target_type: '', source: '', group_id: hashParams.get('group') || '' });
+  const [groupName, setGroupName] = useState(hashParams.get('name') || '');
+  const [notice, setNotice] = useState(null);
   const [data, setData] = useState({ items: [], total: 0 });
   const [offset, setOffset] = useState(0);
   const [detail, setDetail] = useState(null);
@@ -40,20 +43,27 @@ export default function Runs({ user }) {
         }
       />
       <div className="flex-1 space-y-3 overflow-y-auto p-6">
-        <div className="flex flex-wrap gap-2">
-          <Select className="w-40" value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
+        {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-44"><Select value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
             <option value="">Any status</option>
             {['queued', 'running', 'succeeded', 'failed'].map((s) => <option key={s}>{s}</option>)}
-          </Select>
-          <Select className="w-40" value={filters.target_type} onChange={(e) => setFilter('target_type', e.target.value)}>
+          </Select></div>
+          <div className="w-44"><Select value={filters.target_type} onChange={(e) => setFilter('target_type', e.target.value)}>
             <option value="">Agents & workflows</option>
             <option value="agent">Agents</option>
-            <option value="workflow">Workflows</option>
-          </Select>
-          <Select className="w-40" value={filters.source} onChange={(e) => setFilter('source', e.target.value)}>
+            <option value="workflow">Automations</option>
+          </Select></div>
+          <div className="w-44"><Select value={filters.source} onChange={(e) => setFilter('source', e.target.value)}>
             <option value="">Any source</option>
-            {['chat', 'api', 'test', 'schedule', 'webhook'].map((s) => <option key={s}>{s}</option>)}
-          </Select>
+            {['form', 'form_link', 'chat', 'api', 'test', 'schedule', 'webhook'].map((s) => <option key={s}>{s}</option>)}
+          </Select></div>
+          {filters.group_id && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
+              Only “{groupName || 'this automation'}”
+              <button aria-label="Clear" onClick={() => { setGroupName(''); setFilter('group_id', ''); window.history.replaceState(null, '', '#/runs'); }}>×</button>
+            </span>
+          )}
         </div>
         <Table
           rows={data.items}
@@ -62,7 +72,7 @@ export default function Runs({ user }) {
           columns={[
             { key: 'id', label: '#' },
             { key: 'created_at', label: 'Started', render: (r) => formatDate(r.created_at) },
-            { key: 'target', label: 'Target', render: (r) => <><Badge>{r.target_type}</Badge> {r.target_name}</> },
+            { key: 'target', label: 'What', render: (r) => <><Badge>{r.target_type === 'workflow' ? 'automation' : r.target_type}</Badge> {r.target_name}</> },
             { key: 'source', label: 'Source' },
             { key: 'status', label: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'tokens', label: 'Tokens', render: (r) => r.prompt_tokens + r.completion_tokens },
@@ -97,9 +107,9 @@ export default function Runs({ user }) {
                 setDetail(null);
                 setOffset(0);
                 load();
-                alert(`Started run #${r.id}`);
+                setNotice({ kind: 'success', text: `Started run #${r.id}.` });
               } catch (err) {
-                alert(errorMessage(err));
+                setNotice({ kind: 'error', text: errorMessage(err) });
               }
             }}>Run again with the same input</Button>
             <div className="grid gap-3 md:grid-cols-2">

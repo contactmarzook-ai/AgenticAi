@@ -34,7 +34,10 @@ export default function Settings() {
       const res = (await api.put('/settings', body)).data;
       setS(res);
       setHosts(res.http_allowed_hosts.join('\n'));
-      setNotice({ kind: 'success', text: 'Settings saved. They apply to new runs immediately.' });
+      const affected = res.affected_automations || [];
+      setNotice(affected.length
+        ? { kind: 'info', text: `Saved. These automations use a step you just turned off and will fail until changed: ${affected.map((a) => `${a.name} (${a.status === 'active' ? 'live' : a.status})`).join(', ')}.` }
+        : { kind: 'success', text: 'Settings saved. They apply to new runs immediately.' });
     } catch (err) {
       setNotice({ kind: 'error', text: errorMessage(err) });
     } finally {
@@ -71,18 +74,21 @@ export default function Settings() {
 
         <section className="space-y-3 rounded-xl border bg-white p-5">
           <h2 className="font-semibold text-gray-900">Outbound HTTP</h2>
-          <Field label="Hosts that HTTP request steps may call" hint="One per line. Use *.example.com for subdomains, or * for any public host. Slack/Teams/email connections are not limited by this list.">
+          <Field label="Hosts that HTTP request steps may call" hint="One host per line, e.g. api.example.com (a pasted URL is reduced to its host). Use *.example.com for subdomains, or * for any public host. Slack/Teams/email connections are not limited by this list.">
             <Textarea rows={5} value={hosts} onChange={(e) => setHosts(e.target.value)} placeholder={'api.yourcompany.com\n*.salesforce.com'} />
           </Field>
           <Checkbox label="Allow private / internal network addresses (intranet APIs). Leave off unless needed: it lets automations reach internal systems." checked={!!s.allow_private_network} onChange={(e) => setS({ ...s, allow_private_network: e.target.checked })} />
         </section>
 
-        <section className="grid gap-4 rounded-xl border bg-white p-5 md:grid-cols-3">
+        <section className="grid gap-4 rounded-xl border bg-white p-5 md:grid-cols-2">
           <Field label="Who can create connections">
             <Select value={s.connections_min_role} onChange={(e) => setS({ ...s, connections_min_role: e.target.value })}>
               <option value="builder">Builders and admins</option>
               <option value="admin">Admins only</option>
             </Select>
+          </Field>
+          <Field label="Keep run history for (days)" hint="0 keeps it forever. The audit log is never deleted.">
+            <Input type="number" min="0" max="3650" value={s.run_retention_days ?? 90} onChange={(e) => setS({ ...s, run_retention_days: Number(e.target.value) })} />
           </Field>
           <Field label="Longest Wait step (seconds)">
             <Input type="number" min="0" max="3600" value={s.max_wait_seconds} onChange={(e) => setS({ ...s, max_wait_seconds: Number(e.target.value) })} />

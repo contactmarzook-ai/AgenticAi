@@ -2,9 +2,11 @@ import { create } from 'zustand';
 
 const KEY = 'agentos.token';
 
+// localStorage so a sign-in carries over to new tabs. The token expires server-side
+// (JWT_EXPIRE_MINUTES) and is revoked on password/role changes.
 function readToken() {
   try {
-    return sessionStorage.getItem(KEY);
+    return localStorage.getItem(KEY);
   } catch {
     return null;
   }
@@ -12,8 +14,8 @@ function readToken() {
 
 function writeToken(token) {
   try {
-    if (token) sessionStorage.setItem(KEY, token);
-    else sessionStorage.removeItem(KEY);
+    if (token) localStorage.setItem(KEY, token);
+    else localStorage.removeItem(KEY);
   } catch {
     /* storage unavailable: keep the token in memory only */
   }
@@ -22,16 +24,24 @@ function writeToken(token) {
 export const useAuth = create((set) => ({
   token: readToken(),
   user: null, // from GET /auth/me: { id, email, role, department, permissions }
+  expired: false,
   setToken: (token) => {
     writeToken(token);
-    set({ token });
+    set({ token, expired: false });
   },
   setUser: (user) => set({ user }),
-  logout: () => {
+  logout: (opts = {}) => {
     writeToken(null);
-    set({ token: null, user: null });
+    set({ token: null, user: null, expired: !!opts.expired });
   },
 }));
+
+// Signing out in one tab signs out the others.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY && !e.newValue) useAuth.getState().logout();
+  });
+}
 
 export function can(user, permission) {
   return !!user?.permissions?.includes(permission);

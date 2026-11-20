@@ -1,13 +1,17 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Background, Controls, Handle, Position, ReactFlow, addEdge, useEdgesState, useNodesState } from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BaseEdge, Background, Controls, EdgeLabelRenderer, Handle, Position, ReactFlow, addEdge, getBezierPath, useEdgesState,
+  useNodesState,
+} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
   ArrowLeft, CheckCircle2, CircleCheck, CircleDashed, CircleX, Clock, Flag, FlaskConical, GitBranch, Play, Plus, Power,
-  Rocket, Save, Search, Split, Trash2, X,
+  Redo2, Repeat, Rocket, Save, Search, Split, Trash2, Undo2, X,
 } from 'lucide-react';
 import api, { errorMessage } from '../../lib/api';
 import { can } from '../../lib/auth';
 import { CATEGORY_STYLE, iconFor } from '../../lib/icons';
+import { useUnsaved } from '../../lib/unsaved';
 import { Alert, Button, Checkbox, Field, Input, Modal, Select, StatusBadge, Textarea, cx } from '../../lib/ui';
 import RunSteps, { ResultView } from '../RunSteps';
 import Triggers from '../Triggers';
@@ -22,10 +26,13 @@ const OPERATORS = [
 const LOGIC = [
   { type: 'condition', name: 'If / else', description: 'Go one way or another based on a value.', icon: GitBranch },
   { type: 'switch', name: 'Switch', description: 'Route to one of several paths (e.g. by category).', icon: Split },
+  { type: 'loop', name: 'Repeat for each', description: 'Do one step for every item in a list.', icon: Repeat },
   { type: 'end', name: 'Finish', description: 'End of a path; choose what the automation returns.', icon: Flag },
 ];
+const BRANCHING = ['condition', 'switch'];
 const STATUS_ICON = { success: CircleCheck, failed: CircleX, error_continued: CircleX, skipped: CircleDashed };
 const STATUS_COLOR = { success: 'text-green-600', failed: 'text-red-600', error_continued: 'text-amber-600', skipped: 'text-gray-400' };
+const FORM_TYPES = [['text', 'Short text'], ['textarea', 'Long text'], ['number', 'Number'], ['email', 'Email'], ['date', 'Date'], ['select', 'Choice'], ['boolean', 'Yes / no']];
 
 function meta(node, catalog) {
   if (node.type === 'input') return { title: 'Start', icon: Play, style: CATEGORY_STYLE.Start };
@@ -33,7 +40,14 @@ function meta(node, catalog) {
   if (node.type === 'condition') return { title: 'If / else', icon: GitBranch, style: CATEGORY_STYLE.Flow };
   if (node.type === 'switch') return { title: 'Switch', icon: Split, style: CATEGORY_STYLE.Flow };
   const nt = catalog.find((n) => n.key === node.data?.action);
-  return { title: nt?.name || 'Step', icon: iconFor(nt?.icon), style: CATEGORY_STYLE[nt?.category] || CATEGORY_STYLE.Flow };
+  if (node.type === 'loop') return { title: `Repeat: ${nt?.name || 'choose a step'}`, icon: Repeat, style: CATEGORY_STYLE.Flow };
+  return { title: nt ? `${nt.name}${nt.disabled ? ' (disabled)' : ''}` : 'Step', icon: iconFor(nt?.icon), style: CATEGORY_STYLE[nt?.category] || CATEGORY_STYLE.Flow };
+}
+
+function handlesOf(node) {
+  if (node.type === 'condition') return ['true', 'false'];
+  if (node.type === 'switch') return [...(node.data?.cases || []).filter((c) => String(c).trim()), 'default'];
+  return [null];
 }
 
 function StepNode({ data, type, selected }) {
@@ -49,7 +63,7 @@ function StepNode({ data, type, selected }) {
           <Icon className={cx('h-4 w-4', m.style?.text)} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className={cx('text-[10px] font-semibold uppercase tracking-wide', m.style?.text)}>{m.title}</div>
+          <div className={cx('truncate text-[10px] font-semibold uppercase tracking-wide', m.style?.text)}>{m.title}</div>
           <div className="truncate text-sm text-gray-900">{data.label || m.title}</div>
         </div>
         {StatusIcon && <StatusIcon className={cx('h-4 w-4 flex-shrink-0', STATUS_COLOR[data._status])} />}
@@ -64,19 +78,39 @@ function StepNode({ data, type, selected }) {
       {type === 'switch' && (
         <>
           {cases.map((c, i) => (
-            <Handle key={c} type="source" position={Position.Bottom} id={String(c).toLowerCase() === 'default' ? 'default' : c} style={{ left: `${((i + 1) * 100) / (cases.length + 1)}%`, background: c === 'default' ? '#6b7280' : '#d97706' }} />
+            <Handle key={c} type="source" position={Position.Bottom} id={c} style={{ left: `${((i + 1) * 100) / (cases.length + 1)}%`, background: c === 'default' ? '#6b7280' : '#d97706' }} />
           ))}
           <div className="mt-1 flex justify-around text-[10px] font-semibold text-amber-700">
             {cases.map((c) => <span key={c} className="max-w-[4rem] truncate">{c}</span>)}
           </div>
         </>
       )}
-      {type !== 'end' && type !== 'condition' && type !== 'switch' && <Handle type="source" position={Position.Bottom} />}
+      {type !== 'end' && !BRANCHING.includes(type) && <Handle type="source" position={Position.Bottom} />}
     </div>
   );
 }
 
-const nodeTypes = { input: StepNode, action: StepNode, condition: StepNode, switch: StepNode, end: StepNode, agent: StepNode, tool: StepNode, transform: StepNode };
+function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, selected, markerEnd, style, data }) {
+  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  return (
+    <>
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ ...style, strokeWidth: selected ? 2.5 : 1.5, stroke: selected ? '#6366f1' : '#9ca3af' }} />
+      <EdgeLabelRenderer>
+        <div style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, pointerEvents: 'all' }} className="nodrag nopan flex items-center gap-1">
+          {label && <span className="rounded bg-white px-1 text-[10px] font-medium text-gray-600 shadow-sm">{label}</span>}
+          {selected && data?.onDelete && (
+            <button type="button" title="Remove this connection" aria-label="Remove this connection" onClick={() => data.onDelete(id)} className="rounded-full border bg-white p-0.5 text-gray-500 shadow hover:text-red-600">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const nodeTypes = Object.fromEntries(['input', 'action', 'loop', 'condition', 'switch', 'end', 'agent', 'tool', 'transform'].map((t) => [t, StepNode]));
+const edgeTypes = { step: DeletableEdge };
 
 function newId() {
   return `s${Date.now().toString(36).slice(-4)}${Math.random().toString(36).slice(2, 4)}`;
@@ -92,93 +126,250 @@ function blank() {
   };
 }
 
-export default function FlowBuilder({ workflow, draft, catalog, credentialTypes, agents, user, onBack, onSaved }) {
+function edgeLabel(handle) {
+  if (!handle) return undefined;
+  return handle === 'true' ? 'Yes' : handle === 'false' ? 'No' : handle;
+}
+
+function clean(nodes, edges) {
+  return {
+    nodes: nodes.map(({ id, type, position, data }) => ({ id, type, position, data })),
+    edges: edges.map(({ id, source, target, sourceHandle, label }) => ({ id, source, target, sourceHandle: sourceHandle || null, label: label || null })),
+  };
+}
+
+/** Replace {{input.old...}} with {{input.new...}} everywhere in a node's data. */
+function renameRefs(value, from, to) {
+  if (typeof value === 'string') return value.replace(new RegExp(`(\\{\\{\\s*input\\.)${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[.\\s}])`, 'g'), `$1${to}`);
+  if (Array.isArray(value)) return value.map((v) => renameRefs(v, from, to));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, renameRefs(v, from, to)]));
+  return value;
+}
+
+const draftKey = (id) => `agentos.unsaved.${id ?? 'new'}`;
+
+export default function FlowBuilder({ workflow, draft, catalog, credentialTypes, agents, user, onBack, onSaved, onOpenVersion }) {
   const initial = draft?.definition || (workflow?.definition?.nodes?.length ? workflow.definition : blank());
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges.map((e) => ({ ...e, type: 'step', label: e.label || edgeLabel(e.sourceHandle) })));
   const [current, setCurrent] = useState(workflow);
+  const [versions, setVersions] = useState([]);
   const [name, setName] = useState(draft?.name || workflow?.name || 'New automation');
   const [meta_, setMeta] = useState({
     description: draft?.description || workflow?.description || '',
     trigger_keywords: workflow?.trigger_keywords || '',
     visibility: workflow?.visibility || 'private',
   });
+  const [flowSettings, setFlowSettings] = useState(initial.settings || {});
   const [selectedId, setSelectedId] = useState(null);
   const [notice, setNotice] = useState(draft?.warnings?.length ? { kind: 'info', text: `Drafted by AI. Still to do: ${draft.warnings.join(' • ')}` } : null);
   const [busy, setBusy] = useState('');
-  const [dirty, setDirty] = useState(!!draft);
+  const [dirty, setDirtyState] = useState(!!draft);
   const [testOpen, setTestOpen] = useState(false);
   const [triggersOpen, setTriggersOpen] = useState(false);
   const [lastRun, setLastRun] = useState(null);
   const [paletteQuery, setPaletteQuery] = useState('');
+  const [restore, setRestore] = useState(null);
+  const [history, setHistory] = useState({ undo: [], redo: [] });
+  const lastSnap = useRef(0);
+  const setGlobalDirty = useUnsaved((s) => s.setDirty);
 
   const editable = !current || current.can_edit;
   const isDraft = !current || current.status === 'draft';
+  const live = versions.find((v) => v.status === 'active');
   const selected = nodes.find((n) => n.id === selectedId);
   const startNode = nodes.find((n) => n.type === 'input');
   const stepResults = useMemo(() => Object.fromEntries((lastRun?.steps || []).map((s) => [s.node_id, s])), [lastRun]);
 
-  // Decorate nodes with icon/title and last test status for rendering.
-  const viewNodes = useMemo(
-    () => nodes.map((n) => ({ ...n, data: { ...n.data, _meta: meta(n, catalog), _status: stepResults[n.id]?.status } })),
-    [nodes, catalog, stepResults],
-  );
+  const setDirty = useCallback((v) => {
+    setDirtyState(v);
+    setGlobalDirty(v);
+  }, [setGlobalDirty]);
 
-  // Selecting or measuring nodes is not an edit; only moves, additions and removals are.
-  const change = (fn) => (changes) => {
-    if (changes.some((c) => c.type === 'remove' || c.type === 'add' || (c.type === 'position' && c.dragging))) setDirty(true);
-    return fn(changes);
+  // ---------- versions, unsaved-work protection ----------
+  const loadVersions = useCallback((groupId) => {
+    if (groupId) api.get('/workflows', { params: { group_id: groupId } }).then((r) => setVersions(r.data)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadVersions(current?.group_id);
+  }, [current?.group_id, current?.status, loadVersions]);
+
+  useEffect(() => {
+    if (current?.id) window.history.replaceState(null, '', `#/automations/${current.id}`);
+  }, [current?.id]);
+
+  useEffect(() => {
+    const onUnload = (e) => {
+      if (useUnsaved.getState().dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onUnload);
+      setGlobalDirty(false);
+    };
+  }, [setGlobalDirty]);
+
+  // Offer to restore work left unsaved (refresh, expired session, closed tab).
+  useEffect(() => {
+    if (draft) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftKey(workflow?.id)) || 'null');
+      if (saved) setTimeout(() => setRestore(saved), 0);
+    } catch {
+      /* ignore */
+    }
+  }, [workflow?.id, draft]);
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey(current?.id ?? workflow?.id), JSON.stringify({ name, meta: meta_, settings: flowSettings, definition: clean(nodes, edges), at: Date.now() }));
+      } catch {
+        /* storage full or unavailable */
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [dirty, nodes, edges, name, meta_, flowSettings, current?.id, workflow?.id]);
+
+  // ---------- undo / redo ----------
+  const snapshot = useCallback((throttle = false) => {
+    const now = Date.now();
+    if (throttle && now - lastSnap.current < 1000) return;
+    lastSnap.current = now;
+    const snap = clean(nodes, edges);
+    setHistory((h) => ({ undo: [...h.undo.slice(-49), snap], redo: [] }));
+  }, [nodes, edges]);
+
+  const applySnap = (snap) => {
+    setNodes(snap.nodes);
+    setEdges(snap.edges.map((e) => ({ ...e, type: 'step' })));
+    setDirty(true);
+  };
+  const undo = () => {
+    if (!history.undo.length) return;
+    const prev = history.undo[history.undo.length - 1];
+    setHistory((h) => ({ undo: h.undo.slice(0, -1), redo: [...h.redo, clean(nodes, edges)] }));
+    applySnap(prev);
+  };
+  const redo = () => {
+    if (!history.redo.length) return;
+    const next = history.redo[history.redo.length - 1];
+    setHistory((h) => ({ undo: [...h.undo, clean(nodes, edges)], redo: h.redo.slice(0, -1) }));
+    applySnap(next);
   };
 
-  const onConnect = useCallback(
-    (params) => {
-      setDirty(true);
-      setEdges((eds) => addEdge({ ...params, label: params.sourceHandle && params.sourceHandle !== 'null' ? (params.sourceHandle === 'true' ? 'Yes' : params.sourceHandle === 'false' ? 'No' : params.sourceHandle) : undefined }, eds));
-    },
-    [setEdges],
+  // ---------- editing ----------
+  const removeEdge = useCallback((id) => {
+    snapshot();
+    setDirty(true);
+    setEdges((eds) => eds.filter((e) => e.id !== id));
+  }, [snapshot, setDirty, setEdges]);
+
+  const viewNodes = useMemo(
+    () => nodes.map((n) => ({ ...n, deletable: false, data: { ...n.data, _meta: meta(n, catalog), _status: stepResults[n.id]?.status } })),
+    [nodes, catalog, stepResults],
   );
+  const viewEdges = useMemo(() => edges.map((e) => ({ ...e, type: 'step', deletable: false, data: { onDelete: editable ? removeEdge : null } })), [edges, editable, removeEdge]);
+
+  const onNodesChangeSafe = (changes) => {
+    const real = changes.filter((c) => c.type !== 'remove');
+    if (real.some((c) => c.type === 'position' && c.dragging) && !dirty) setDirty(true);
+    onNodesChange(real);
+  };
+  const onEdgesChangeSafe = (changes) => onEdgesChange(changes.filter((c) => c.type !== 'remove'));
+
+  const onConnect = (params) => {
+    snapshot();
+    setDirty(true);
+    const sourceIsBranch = BRANCHING.includes(nodes.find((n) => n.id === params.source)?.type);
+    // A branch handle leads to one place: connecting it again replaces the old connection.
+    setEdges((eds) => addEdge(
+      { ...params, type: 'step', label: edgeLabel(params.sourceHandle) },
+      eds.filter((e) => !(sourceIsBranch && e.source === params.source && (e.sourceHandle || null) === (params.sourceHandle || null))),
+    ));
+  };
 
   const updateData = (id, patch) => {
+    snapshot(true);
     setDirty(true);
     setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
   };
 
-  /** Add a step. If a plain step is selected, insert the new one right after it. */
-  const addStep = (type, action) => {
-    const id = newId();
+  const newNodeData = (type, action) => {
     const nt = catalog.find((n) => n.key === action);
-    const data =
-      type === 'action' ? { label: nt?.name || 'Step', action, config: {}, settings: {} }
-        : type === 'condition' ? { label: 'Check', condition: { left: '', operator: '==', right: '' } }
-          : type === 'switch' ? { label: 'Route', value: '', cases: ['option 1', 'option 2'] }
-            : { label: 'Finish' };
-    const anchor = selected && !['end', 'condition', 'switch'].includes(selected.type) ? selected : null;
-    const position = anchor ? { x: anchor.position.x, y: anchor.position.y + 130 } : { x: 300 + (nodes.length % 3) * 40, y: 160 + nodes.length * 30 };
+    if (type === 'action') return { label: nt?.name || 'Step', action, config: {}, settings: {} };
+    if (type === 'condition') return { label: 'Check', condition: { left: '', operator: '==', right: '' } };
+    if (type === 'switch') return { label: 'Route', value: '', cases: ['option 1', 'option 2'] };
+    if (type === 'loop') return { label: 'Repeat for each', items: '', action: '', config: {} };
+    return { label: 'Finish' };
+  };
+
+  /** Add a step where a non-coder expects it: after the selected step, on a free branch, or before Finish. */
+  const addStep = (type, action) => {
+    snapshot();
     setDirty(true);
-    setNodes((nds) => {
-      const shifted = anchor ? nds.map((n) => (n.position.y > anchor.position.y ? { ...n, position: { ...n.position, y: n.position.y + 130 } } : n)) : nds;
-      return [...shifted, { id, type, position, data }];
-    });
-    if (anchor) {
-      setEdges((eds) => {
-        const outgoing = eds.filter((e) => e.source === anchor.id);
-        const rest = eds.filter((e) => e.source !== anchor.id);
-        const moved = type === 'end' ? [] : outgoing.map((e) => ({ ...e, id: `e-${id}-${e.target}`, source: id, sourceHandle: type === 'condition' ? 'true' : type === 'switch' ? 'default' : null, label: type === 'condition' ? 'Yes' : type === 'switch' ? 'default' : undefined }));
-        return [...rest, { id: `e-${anchor.id}-${id}`, source: anchor.id, target: id }, ...moved];
-      });
+    const id = newId();
+    const data = newNodeData(type, action);
+    let anchor = selected;
+    if (!anchor || anchor.type === 'end') {
+      const finish = anchor?.type === 'end' ? anchor : null;
+      const intoFinish = edges.filter((e) => nodes.find((n) => n.id === e.target)?.type === 'end' && (!finish || e.target === finish.id));
+      const plain = intoFinish.filter((e) => !BRANCHING.includes(nodes.find((n) => n.id === e.source)?.type));
+      anchor = plain.length === 1 ? nodes.find((n) => n.id === plain[0].source) : null;
     }
+    if (!anchor) {
+      const maxY = Math.max(...nodes.map((n) => n.position.y), 0);
+      setNodes((nds) => [...nds, { id, type, position: { x: 620, y: maxY }, data }]);
+      setSelectedId(id);
+      setNotice({ kind: 'info', text: "Step added on the right. Drag from a step's bottom dot to the next step's top dot to connect it." });
+      return;
+    }
+    if (BRANCHING.includes(anchor.type)) {
+      const handles = handlesOf(anchor);
+      const used = new Set(edges.filter((e) => e.source === anchor.id).map((e) => e.sourceHandle || null));
+      const free = handles.findIndex((h) => !used.has(h));
+      const h = free === -1 ? null : handles[free];
+      const x = anchor.position.x + (free === -1 ? 300 : (free - (handles.length - 1) / 2) * 260);
+      setNodes((nds) => [...nds, { id, type, position: { x, y: anchor.position.y + 140 }, data }]);
+      // A new branch also leads on to Finish (when there is just one), so the path is complete.
+      const finishes = nodes.filter((n) => n.type === 'end');
+      const onward = type !== 'end' && !BRANCHING.includes(type) && finishes.length === 1
+        ? [{ id: `e-${id}-${finishes[0].id}`, source: id, target: finishes[0].id, type: 'step' }] : [];
+      if (h !== null) setEdges((eds) => [...eds, { id: `e-${anchor.id}-${id}`, source: anchor.id, sourceHandle: h, target: id, type: 'step', label: edgeLabel(h) }, ...onward]);
+      setSelectedId(id);
+      return;
+    }
+    const position = { x: anchor.position.x, y: anchor.position.y + 130 };
+    setNodes((nds) => [...nds.map((n) => (n.position.y > anchor.position.y ? { ...n, position: { ...n.position, y: n.position.y + 130 } } : n)), { id, type, position, data }]);
+    setEdges((eds) => {
+      const outgoing = eds.filter((e) => e.source === anchor.id);
+      const rest = eds.filter((e) => e.source !== anchor.id);
+      const firstHandle = type === 'condition' ? 'true' : type === 'switch' ? 'default' : null;
+      let moved = type === 'end' ? [] : outgoing.map((e) => ({ ...e, id: `e-${id}-${e.target}`, source: id, sourceHandle: firstHandle, label: edgeLabel(firstHandle) }));
+      const finishes = nodes.filter((n) => n.type === 'end');
+      if (!moved.length && type !== 'end' && finishes.length === 1) {
+        moved = [{ id: `e-${id}-${finishes[0].id}`, source: id, sourceHandle: firstHandle, target: finishes[0].id, type: 'step', label: edgeLabel(firstHandle) }];
+      }
+      return [...rest, { id: `e-${anchor.id}-${id}`, source: anchor.id, target: id, type: 'step' }, ...moved];
+    });
     setSelectedId(id);
   };
 
-  const removeSelected = () => {
+  const removeNode = (nodeId) => {
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node || node.type === 'input') return;
+    snapshot();
     setDirty(true);
-    const incoming = edges.filter((e) => e.target === selectedId);
-    const outgoing = edges.filter((e) => e.source === selectedId);
-    setNodes((nds) => nds.filter((n) => n.id !== selectedId));
+    const incoming = edges.filter((e) => e.target === nodeId);
+    const outgoing = edges.filter((e) => e.source === nodeId);
+    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => {
-      const kept = eds.filter((e) => e.source !== selectedId && e.target !== selectedId);
-      // Re-join a simple chain (A -> X -> B becomes A -> B).
-      if (incoming.length === 1 && outgoing.length === 1 && !['condition', 'switch'].includes(selected?.type)) {
+      const kept = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
+      if (incoming.length === 1 && outgoing.length === 1 && !BRANCHING.includes(node.type)) {
         kept.push({ ...incoming[0], id: `e-${incoming[0].source}-${outgoing[0].target}`, target: outgoing[0].target });
       }
       return kept;
@@ -186,21 +377,58 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
     setSelectedId(null);
   };
 
-  const definition = () => ({
-    nodes: nodes.map(({ id, type, position, data }) => ({ id, type, position, data })),
-    edges: edges.map(({ id, source, target, sourceHandle, label }) => ({ id, source, target, sourceHandle: sourceHandle || null, label: label || null })),
+  const renameCase = (nodeId, from, to) => setEdges((eds) => eds.map((e) => (e.source === nodeId && e.sourceHandle === from ? { ...e, sourceHandle: to, label: edgeLabel(to) } : e)));
+  const dropCase = (nodeId, value) => setEdges((eds) => eds.filter((e) => !(e.source === nodeId && e.sourceHandle === value)));
+  const renameField = (from, to) => {
+    if (!from || from === to) return;
+    setNodes((nds) => nds.map((n) => (n.type === 'input' ? n : { ...n, data: renameRefs(n.data, from, to) })));
+  };
+
+  // Keyboard: Delete/Backspace removes the selected connection or step (never Start); Ctrl/Cmd+Z undoes.
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (['input', 'textarea', 'select'].includes(tag) || e.target?.isContentEditable || !editable) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        const edge = edges.find((ed) => ed.selected);
+        if (edge) removeEdge(edge.id);
+        else if (selected && selected.type !== 'input') removeNode(selected.id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   });
 
-  const body = () => ({ name, description: meta_.description || null, trigger_keywords: meta_.trigger_keywords || null, visibility: meta_.visibility, definition: definition() });
+  // ---------- saving & lifecycle ----------
+  const body = () => ({
+    name: name.trim() || 'Untitled automation',
+    description: meta_.description || null,
+    trigger_keywords: meta_.trigger_keywords || null,
+    visibility: meta_.visibility,
+    definition: { ...clean(nodes, edges), settings: flowSettings },
+  });
 
   const save = async () => {
     setBusy('save');
     try {
       const saved = current && isDraft ? (await api.put(`/workflows/${current.id}`, body())).data : (await api.post('/workflows', { ...body(), group_id: current?.group_id })).data;
       const newVersion = current && saved.id !== current.id;
+      try {
+        localStorage.removeItem(draftKey(current?.id ?? workflow?.id));
+      } catch {
+        /* ignore */
+      }
       setCurrent(saved);
       setDirty(false);
       onSaved?.();
+      loadVersions(saved.group_id);
       setNotice({ kind: 'success', text: newVersion ? `Saved as a new draft (version ${saved.version}). The live version keeps running until you publish this one.` : 'Saved.' });
       return saved;
     } catch (err) {
@@ -217,7 +445,8 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
     const wf = await ensureSaved();
     if (!wf) return null;
     const res = (await api.post(`/workflows/${wf.id}/validate`)).data;
-    setNotice(res.is_valid ? { kind: 'success', text: 'Everything looks good.' } : { kind: 'error', text: res.errors.join(' • ') });
+    if (!res.is_valid) setNotice({ kind: 'error', text: res.errors.join(' • ') });
+    else if (res.warnings?.length) setNotice({ kind: 'info', text: `Looks good. Note: ${res.warnings.join(' • ')}` });
     return res.is_valid ? wf : null;
   };
 
@@ -237,16 +466,25 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
     }
   };
 
-  const unpublish = async () => {
-    if (!confirm('Turn this automation off? Schedules and webhooks will stop starting it.')) return;
+  const turnOff = async () => {
+    if (!live || !confirm('Turn this automation off? Schedules, webhooks, form links and chat will stop starting it.')) return;
     try {
-      const res = (await api.post(`/workflows/${current.id}/deactivate`)).data;
-      setCurrent(res);
+      const res = (await api.post(`/workflows/${live.id}/deactivate`)).data;
+      if (res.id === current?.id) setCurrent(res);
+      loadVersions(res.group_id);
       onSaved?.();
-      setNotice({ kind: 'info', text: 'Turned off.' });
+      setNotice({ kind: 'info', text: 'Turned off. Use Turn on (or Publish) to start it again.' });
     } catch (err) {
       setNotice({ kind: 'error', text: errorMessage(err) });
     }
+  };
+
+  const discardDraft = async () => {
+    if (!current || current.status !== 'draft' || !live || !confirm('Discard this draft and go back to the live version?')) return;
+    await api.delete(`/workflows/${current.id}`);
+    setDirty(false);
+    onSaved?.();
+    onOpenVersion?.(live);
   };
 
   const openTest = async () => {
@@ -254,32 +492,77 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
     if (wf) setTestOpen(true);
   };
 
+  const doRestore = () => {
+    snapshot();
+    setNodes(restore.definition.nodes);
+    setEdges(restore.definition.edges.map((e) => ({ ...e, type: 'step' })));
+    setName(restore.name);
+    setMeta(restore.meta);
+    setFlowSettings(restore.settings || {});
+    setDirty(true);
+    setRestore(null);
+  };
+  const dropRestore = () => {
+    try {
+      localStorage.removeItem(draftKey(workflow?.id));
+    } catch {
+      /* ignore */
+    }
+    setRestore(null);
+  };
+
   const groups = selected ? availableVariables(selected.id, nodes, edges, catalog) : [];
   const q = paletteQuery.trim().toLowerCase();
   const palette = catalog.filter((n) => !n.disabled && (!q || `${n.name} ${n.description}`.toLowerCase().includes(q)));
-  const categories = ['AI', 'Apps', 'Data', 'Flow'];
+  const anchorHint = selected && selected.type !== 'end' ? `after “${selected.data?.label}”` : 'before Finish';
+  const statusLabel = !current ? 'draft' : current.status === 'active' ? 'live' : current.status === 'archived' ? (live ? 'old version' : 'off') : 'draft';
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b bg-white px-4 py-2.5">
-        <Button variant="ghost" icon={ArrowLeft} onClick={() => (!dirty || confirm('Leave without saving?')) && onBack()}>
-          Back
-        </Button>
-        <Input className="max-w-xs font-medium" value={name} disabled={!editable} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
-        {current ? <StatusBadge status={current.status === 'active' ? 'active' : current.status} /> : <StatusBadge status="draft" />}
-        {current && <span className="text-xs text-gray-400">v{current.version}</span>}
+        <Button variant="ghost" icon={ArrowLeft} onClick={() => { if (!dirty || confirm('Leave without saving?')) { setDirty(false); onBack(); } }}>Back</Button>
+        <Input className="max-w-xs font-medium" value={name} disabled={!editable} maxLength={200} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
+        {versions.length > 1 ? (
+          <select
+            aria-label="Version"
+            className="rounded-md border px-2 py-1 text-xs"
+            value={current?.id}
+            onChange={(e) => {
+              const v = versions.find((x) => x.id === Number(e.target.value));
+              if (v && (!dirty || confirm('Open another version without saving?'))) { setDirty(false); onOpenVersion?.(v); }
+            }}
+          >
+            {versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {v.status === 'active' ? 'live' : v.status === 'archived' ? 'old' : 'draft'}</option>)}
+          </select>
+        ) : (
+          current && <span className="text-xs text-gray-400">v{current.version}</span>
+        )}
+        <StatusBadge status={statusLabel} />
         {dirty && <span className="text-xs text-amber-600">unsaved changes</span>}
-        <div className="ml-auto flex flex-wrap gap-2">
-          {editable && <Button variant="secondary" icon={Save} loading={busy === 'save'} onClick={save}>Save</Button>}
-          {editable && <Button variant="secondary" icon={FlaskConical} onClick={openTest}>Test</Button>}
-          {current && editable && can(user, 'trigger:write') && <Button variant="secondary" icon={Clock} onClick={() => setTriggersOpen(true)}>Schedule & webhooks</Button>}
-          {editable && can(user, 'workflow:activate') && (current?.status === 'active' && !dirty ? (
-            <Button variant="secondary" icon={Power} onClick={unpublish}>Turn off</Button>
-          ) : (
-            <Button icon={Rocket} loading={busy === 'publish'} onClick={publish}>Publish</Button>
-          ))}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {editable && (
+            <>
+              <button title="Undo (Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!history.undo.length} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
+              <button title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={redo} disabled={!history.redo.length} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
+              <Button variant="secondary" icon={Save} loading={busy === 'save'} onClick={save}>Save</Button>
+              <Button variant="secondary" icon={FlaskConical} onClick={openTest}>Test</Button>
+            </>
+          )}
+          {current && editable && can(user, 'trigger:write') && <Button variant="secondary" icon={Clock} onClick={() => setTriggersOpen(true)}>How it starts</Button>}
+          {editable && current?.status === 'draft' && live && <Button variant="ghost" onClick={discardDraft}>Discard draft</Button>}
+          {editable && can(user, 'workflow:activate') && live && (current?.id !== live.id || !dirty) && <Button variant="secondary" icon={Power} onClick={turnOff}>Turn off</Button>}
+          {editable && can(user, 'workflow:activate') && (current?.status !== 'active' || dirty) && (
+            <Button icon={Rocket} loading={busy === 'publish'} onClick={publish}>{statusLabel === 'off' && !dirty ? 'Turn on' : 'Publish'}</Button>
+          )}
         </div>
       </div>
+      {restore && (
+        <div className="flex flex-wrap items-center gap-2 border-b bg-amber-50 px-4 py-2 text-sm text-amber-900">
+          You have unsaved changes from {new Date(restore.at).toLocaleString()}.
+          <Button variant="secondary" onClick={doRestore}>Restore them</Button>
+          <Button variant="ghost" onClick={dropRestore}>Discard</Button>
+        </div>
+      )}
       {notice && (
         <div className="flex items-start gap-2 border-b bg-white px-4 py-2">
           <div className="flex-1"><Alert kind={notice.kind}>{notice.text}</Alert></div>
@@ -296,10 +579,10 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
                 <Search className="absolute left-2 top-2 h-4 w-4 text-gray-400" />
                 <input className="w-full rounded-md border py-1.5 pl-7 pr-2 text-sm" placeholder="Search steps" value={paletteQuery} onChange={(e) => setPaletteQuery(e.target.value)} />
               </div>
-              {selected && !['end', 'condition', 'switch'].includes(selected.type) && <p className="mt-2 text-xs text-gray-400">Added after “{selected.data?.label}”</p>}
+              <p className="mt-2 text-xs text-gray-400">New steps go {anchorHint}.</p>
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto px-3 pb-3">
-              {categories.map((cat) => {
+              {['AI', 'Apps', 'Data', 'Flow'].map((cat) => {
                 const items = palette.filter((n) => n.category === cat);
                 const logic = cat === 'Flow' ? LOGIC.filter((l) => !q || `${l.name} ${l.description}`.toLowerCase().includes(q)) : [];
                 if (!items.length && !logic.length) return null;
@@ -324,16 +607,18 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
         <div className="min-w-0 flex-1">
           <ReactFlow
             nodes={viewNodes}
-            edges={edges}
+            edges={viewEdges}
             nodeTypes={nodeTypes}
-            onNodesChange={editable ? change(onNodesChange) : undefined}
-            onEdgesChange={editable ? change(onEdgesChange) : undefined}
+            edgeTypes={edgeTypes}
+            onNodesChange={editable ? onNodesChangeSafe : undefined}
+            onEdgesChange={editable ? onEdgesChangeSafe : undefined}
             onConnect={editable ? onConnect : undefined}
+            onNodeDragStart={() => editable && snapshot()}
             onNodeClick={(_, n) => setSelectedId(n.id)}
             onPaneClick={() => setSelectedId(null)}
             nodesDraggable={editable}
             nodesConnectable={editable}
-            deleteKeyCode={editable ? ['Delete'] : null}
+            deleteKeyCode={null}
             fitView
             fitViewOptions={{ maxZoom: 1 }}
           >
@@ -347,17 +632,28 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
             <fieldset disabled={!editable} className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">{meta(selected, catalog).title}</h3>
-                {editable && selected.type !== 'input' && <Button variant="danger" icon={Trash2} onClick={removeSelected}>Remove</Button>}
+                {editable && selected.type !== 'input' && <Button variant="danger" icon={Trash2} onClick={() => removeNode(selected.id)}>Remove</Button>}
               </div>
               {selected.type === 'action' && <p className="-mt-2 text-sm text-gray-500">{catalog.find((n) => n.key === selected.data?.action)?.description}</p>}
               <Field label="Name of this step">
-                <Input value={selected.data?.label || ''} onChange={(e) => updateData(selected.id, { label: e.target.value })} />
+                <Input value={selected.data?.label || ''} maxLength={120} onChange={(e) => updateData(selected.id, { label: e.target.value })} />
               </Field>
-              <NodeSettings node={selected} catalog={catalog} groups={groups} agents={agents} credentialTypes={credentialTypes} onChange={(patch) => updateData(selected.id, patch)} onTriggers={current ? () => setTriggersOpen(true) : null} />
+              <NodeSettings
+                node={selected}
+                catalog={catalog}
+                groups={groups}
+                agents={agents}
+                credentialTypes={credentialTypes}
+                onChange={(patch) => updateData(selected.id, patch)}
+                onTriggers={current ? () => setTriggersOpen(true) : null}
+                onRenameCase={(from, to) => renameCase(selected.id, from, to)}
+                onDropCase={(v) => dropCase(selected.id, v)}
+                onRenameField={renameField}
+              />
               {stepResults[selected.id] && <StepResult step={stepResults[selected.id]} />}
             </fieldset>
           ) : (
-            <AutomationSettings meta={meta_} setMeta={(m) => { setMeta(m); setDirty(true); }} editable={editable} lastRun={lastRun} />
+            <AutomationSettings meta={meta_} setMeta={(m) => { setMeta(m); setDirty(true); }} settings={flowSettings} setSettings={(s) => { setFlowSettings(s); setDirty(true); }} editable={editable} lastRun={lastRun} credentialTypes={credentialTypes} />
           )}
         </div>
       </div>
@@ -365,7 +661,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
       {testOpen && current && (
         <TestRun workflow={current} fields={startNode?.data?.fields || []} onClose={() => setTestOpen(false)} onResult={(run) => { setLastRun(run); setNotice(run.status === 'succeeded' ? { kind: 'success', text: 'Test succeeded. Click a step to see what it produced.' } : { kind: 'error', text: run.error }); }} />
       )}
-      {triggersOpen && current && <Triggers workflow={current} onClose={() => setTriggersOpen(false)} />}
+      {triggersOpen && current && <Triggers workflow={current} isLive={!!live} fields={startNode?.data?.fields || []} onClose={() => setTriggersOpen(false)} />}
     </div>
   );
 }
@@ -383,12 +679,34 @@ function StepResult({ step }) {
   );
 }
 
-function AutomationSettings({ meta, setMeta, editable, lastRun }) {
+function AlertSettings({ settings, setSettings, credentialTypes }) {
+  const [creds, setCreds] = useState([]);
+  useEffect(() => {
+    api.get('/credentials', { params: { type: 'slack_webhook|teams_webhook|smtp' } }).then((r) => setCreds(r.data)).catch(() => {});
+  }, []);
+  const notify = settings.notify_on_failure || {};
+  const chosen = creds.find((c) => c.id === Number(notify.credential_id));
+  const set = (patch) => setSettings({ ...settings, notify_on_failure: { ...notify, ...patch } });
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="text-sm font-medium text-gray-800">Tell me when it fails</div>
+      <Select aria-label="Failure alerts" value={notify.credential_id || ''} onChange={(e) => set({ credential_id: e.target.value ? Number(e.target.value) : '' })}>
+        <option value="">Don't send alerts</option>
+        {notify.credential_id && !chosen && <option value={notify.credential_id}>Set by the owner (not shared with you)</option>}
+        {creds.map((c) => <option key={c.id} value={c.id}>{credentialTypes.find((t) => t.key === c.type)?.name || c.type}: {c.name}</option>)}
+      </Select>
+      {chosen?.type === 'smtp' && <Input type="email" placeholder="Email address to alert" value={notify.email_to || ''} onChange={(e) => set({ email_to: e.target.value })} />}
+      <p className="text-xs text-gray-400">Sent when a scheduled, webhook, form or chat run fails (not for tests). Add Slack, Teams or email under Connections.</p>
+    </div>
+  );
+}
+
+function AutomationSettings({ meta, setMeta, settings, setSettings, editable, lastRun, credentialTypes }) {
   return (
     <fieldset disabled={!editable} className="space-y-3">
       <h3 className="font-semibold text-gray-900">About this automation</h3>
       <Field label="Description">
-        <Textarea rows={3} className="font-sans" value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} />
+        <Textarea rows={3} className="font-sans" maxLength={2000} value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} />
       </Field>
       <Field label="Who can run it">
         <Select value={meta.visibility} onChange={(e) => setMeta({ ...meta, visibility: e.target.value })}>
@@ -397,30 +715,34 @@ function AutomationSettings({ meta, setMeta, editable, lastRun }) {
           <option value="public">Everyone</option>
         </Select>
       </Field>
-      <Field label="Chat keywords (optional)" hint="Comma separated. Chat messages containing one run this automation.">
-        <Input value={meta.trigger_keywords} onChange={(e) => setMeta({ ...meta, trigger_keywords: e.target.value })} />
-      </Field>
+      <AlertSettings settings={settings} setSettings={setSettings} credentialTypes={credentialTypes} />
+      <details className="rounded-md border p-2 text-sm">
+        <summary className="cursor-pointer text-gray-600">Advanced</summary>
+        <div className="mt-2">
+          <Field label="Chat keywords" hint="Comma separated. Chat messages containing one run this automation directly (otherwise the AI decides).">
+            <Input value={meta.trigger_keywords} onChange={(e) => setMeta({ ...meta, trigger_keywords: e.target.value })} />
+          </Field>
+        </div>
+      </details>
       <div className="rounded-md bg-indigo-50 p-3 text-sm text-indigo-900">
         <b>Tips</b>
         <ul className="mt-1 list-disc space-y-1 pl-4">
           <li>Click a step to set it up. Use <i>Insert data</i> to use results from earlier steps.</li>
-          <li>Select a step, then pick a new one on the left to insert it right after.</li>
-          <li><b>Test</b> runs your draft; <b>Publish</b> makes it live for schedules, webhooks and chat.</li>
+          <li>New steps are added after the selected step (or before Finish). Click a connection to remove it.</li>
+          <li><b>Test</b> runs your draft; <b>Publish</b> makes it live. Ctrl+Z undoes.</li>
         </ul>
       </div>
       {lastRun && (
         <div>
           <div className="mb-1 text-xs font-semibold uppercase text-gray-500">Last test result</div>
-          <pre className="max-h-60 overflow-auto rounded bg-gray-900 p-3 text-xs text-gray-100">{JSON.stringify(lastRun.output?.result ?? lastRun.error, null, 2)}</pre>
+          {lastRun.status === 'succeeded' ? <ResultView value={lastRun.output?.result} /> : <Alert>{lastRun.error}</Alert>}
         </div>
       )}
     </fieldset>
   );
 }
 
-const FORM_TYPES = [['text', 'Short text'], ['textarea', 'Long text'], ['number', 'Number'], ['email', 'Email'], ['date', 'Date'], ['select', 'Choice'], ['boolean', 'Yes / no']];
-
-function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange, onTriggers }) {
+function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange, onTriggers, onRenameCase, onDropCase, onRenameField }) {
   const data = node.data || {};
 
   if (node.type === 'input') {
@@ -428,18 +750,18 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
     const setFields = (f) => onChange({ fields: f });
     return (
       <div className="space-y-3">
-        <p className="text-sm text-gray-600">
-          An automation starts when someone runs it (they fill in the form below), from chat, on a schedule, or from a webhook.
-        </p>
-        {onTriggers && <Button variant="secondary" icon={Clock} onClick={onTriggers}>Add a schedule or webhook</Button>}
+        <p className="text-sm text-gray-600">An automation starts when someone fills in this form, from chat, a public form link, a schedule or a webhook.</p>
+        {onTriggers && <Button variant="secondary" icon={Clock} onClick={onTriggers}>Schedule, form link or webhook</Button>}
         <div className="text-xs font-semibold uppercase text-gray-500">Form fields</div>
-        {!fields.length && <p className="text-xs text-gray-400">No fields. Add some so people can give the automation information when they run it.</p>}
+        {!fields.length && <p className="text-xs text-gray-400">No fields yet. Add some so people can give the automation information.</p>}
         {fields.map((f, i) => (
           <div key={i} className="space-y-1.5 rounded-md border bg-gray-50 p-2">
             <div className="flex gap-1">
-              <Input placeholder="Label" value={f.label} onChange={(e) => {
+              <Input placeholder="Label" value={f.label} maxLength={100} onChange={(e) => {
                 const label = e.target.value;
-                const key = f.keyEdited ? f.key : label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `field_${i + 1}`;
+                const base = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `field_${i + 1}`;
+                const key = fields.some((x, j) => j !== i && x.key === base) ? `${base}_${i + 1}` : base;
+                onRenameField(f.key, key);
                 setFields(fields.map((x, j) => (j === i ? { ...x, label, key } : x)));
               }} />
               <button type="button" className="p-1 text-gray-400 hover:text-red-600" onClick={() => setFields(fields.filter((_, j) => j !== i))} aria-label="Remove field"><X className="h-4 w-4" /></button>
@@ -461,30 +783,52 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
     );
   }
 
-  if (node.type === 'action') {
+  if (node.type === 'action' || node.type === 'loop') {
+    const isLoop = node.type === 'loop';
     const nt = catalog.find((n) => n.key === data.action);
-    if (!nt) return <Alert>This step type is not available (it may have been disabled by an administrator).</Alert>;
     const settings = data.settings || {};
+    const loopGroups = isLoop ? [{ label: 'Current item', root: 'item', vars: [{ label: 'item', value: '{{item}}' }, { label: 'position (1, 2, 3…)', value: '{{index}}' }] }, ...groups] : groups;
     return (
       <div className="space-y-4">
-        <StepForm nodeType={nt} config={data.config || {}} onChange={(config) => onChange({ config })} groups={groups} agents={agents} credentialTypes={credentialTypes} />
-        <details className="rounded-md border p-2 text-sm">
-          <summary className="cursor-pointer text-gray-600">If this step fails…</summary>
-          <div className="mt-2 space-y-2">
-            <div className="flex gap-2">
-              <Field label="Retry times" className="flex-1">
-                <Select value={settings.retries || 0} onChange={(e) => onChange({ settings: { ...settings, retries: Number(e.target.value) } })}>
-                  {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? "Don't retry" : n}</option>)}
-                </Select>
-              </Field>
-              <Field label="Wait between (seconds)" className="flex-1">
-                <Input type="number" min="0" max="60" value={settings.retry_delay_seconds ?? 1} onChange={(e) => onChange({ settings: { ...settings, retry_delay_seconds: Number(e.target.value) } })} />
-              </Field>
+        {isLoop && (
+          <>
+            <Field label="List to go through *" hint="A list from an earlier step (e.g. Text tools → split), or one item per line.">
+              <VarText value={data.items || ''} groups={groups} placeholder="{{split.result}}" onChange={(v) => onChange({ items: v })} />
+            </Field>
+            <Field label="For each item, do">
+              <Select value={data.action || ''} onChange={(e) => onChange({ action: e.target.value, config: {} })}>
+                <option value="">Choose a step…</option>
+                {catalog.filter((n) => !n.disabled).map((n) => <option key={n.key} value={n.key}>{n.name}</option>)}
+              </Select>
+            </Field>
+          </>
+        )}
+        {!nt && !isLoop && <Alert>This step type is not available (it may have been disabled by an administrator).</Alert>}
+        {nt?.disabled && <Alert>{nt.name} steps are disabled by your administrator. This automation will fail until the step is replaced.</Alert>}
+        {nt && <StepForm nodeType={nt} config={data.config || {}} onChange={(config) => onChange({ config })} groups={loopGroups} agents={agents} credentialTypes={credentialTypes} />}
+        {nt && (
+          <details className="rounded-md border p-2 text-sm">
+            <summary className="cursor-pointer text-gray-600">If this step fails…</summary>
+            <div className="mt-2 space-y-2">
+              {isLoop ? (
+                <Checkbox label="If one item fails, keep going with the others" checked={!!settings.item_errors_continue} onChange={(e) => onChange({ settings: { ...settings, item_errors_continue: e.target.checked } })} />
+              ) : (
+                <div className="flex gap-2">
+                  <Field label="Retry times" className="flex-1">
+                    <Select value={settings.retries || 0} onChange={(e) => onChange({ settings: { ...settings, retries: Number(e.target.value) } })}>
+                      {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? "Don't retry" : n}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Wait between (seconds)" className="flex-1">
+                    <Input type="number" min="0" max="60" value={settings.retry_delay_seconds ?? 1} onChange={(e) => onChange({ settings: { ...settings, retry_delay_seconds: Number(e.target.value) } })} />
+                  </Field>
+                </div>
+              )}
+              <Checkbox label="Keep the automation going (the step's output becomes { error })" checked={!!settings.continue_on_error} onChange={(e) => onChange({ settings: { ...settings, continue_on_error: e.target.checked } })} />
             </div>
-            <Checkbox label="Keep going anyway (the step's output becomes { error })" checked={!!settings.continue_on_error} onChange={(e) => onChange({ settings: { ...settings, continue_on_error: e.target.checked } })} />
-          </div>
-        </details>
-        {nt.output_hint && <p className="text-xs text-gray-500">Produces: <code>{nt.output_hint}</code></p>}
+          </details>
+        )}
+        {nt?.output_hint && <p className="text-xs text-gray-500">Produces: <code>{isLoop ? '{ results: [...], count }' : nt.output_hint}</code></p>}
       </div>
     );
   }
@@ -502,7 +846,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
           </Select>
         </Field>
         {!['is_empty', 'not_empty'].includes(cond.operator) && <Field label="this value"><VarText value={asText(cond.right)} groups={groups} placeholder="1000" onChange={(v) => set({ right: v })} /></Field>}
-        <p className="text-xs text-gray-500">Connect the green <b>Yes</b> handle and the red <b>No</b> handle to the next steps.</p>
+        <p className="text-xs text-gray-500">Connect the green <b>Yes</b> and red <b>No</b> dots to the next steps (selecting this step and adding a new one does it for you).</p>
       </div>
     );
   }
@@ -515,12 +859,12 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
         <div className="text-xs font-semibold uppercase text-gray-500">Paths</div>
         {cases.map((c, i) => (
           <div key={i} className="flex gap-1">
-            <Input value={c} onChange={(e) => onChange({ cases: cases.map((x, j) => (j === i ? e.target.value : x)) })} />
-            <button type="button" className="p-1 text-gray-400 hover:text-red-600" onClick={() => onChange({ cases: cases.filter((_, j) => j !== i) })} aria-label="Remove path"><X className="h-4 w-4" /></button>
+            <Input value={c} maxLength={60} onChange={(e) => { onRenameCase(c, e.target.value); onChange({ cases: cases.map((x, j) => (j === i ? e.target.value : x)) }); }} />
+            <button type="button" className="p-1 text-gray-400 hover:text-red-600" onClick={() => { onDropCase(c); onChange({ cases: cases.filter((_, j) => j !== i) }); }} aria-label="Remove path"><X className="h-4 w-4" /></button>
           </div>
         ))}
         <Button variant="secondary" icon={Plus} onClick={() => onChange({ cases: [...cases, `option ${cases.length + 1}`] })}>Add path</Button>
-        <p className="text-xs text-gray-500">Each path gets its own handle under the step; anything else goes to <b>default</b>. Matching ignores upper/lower case.</p>
+        <p className="text-xs text-gray-500">Each path gets its own dot under the step; anything else goes to <b>default</b>. Matching ignores upper/lower case.</p>
       </div>
     );
   }

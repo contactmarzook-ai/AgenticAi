@@ -16,8 +16,28 @@ export default function Connections() {
     api.get('/nodes').then((r) => setTypes(r.data.credential_types));
   }, [load]);
 
+  const [notice, setNotice] = useState(null);
+  const test = async (c) => {
+    setNotice({ kind: 'info', text: `Testing “${c.name}”…` });
+    try {
+      const r = (await api.post(`/credentials/${c.id}/test`)).data;
+      setNotice({ kind: r.ok ? 'success' : 'error', text: `${c.name}: ${r.message}` });
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorMessage(err) });
+    }
+  };
+
   const remove = async (c) => {
-    if (!confirm(`Delete connection "${c.name}"? Automations using it will fail until you pick another.`)) return;
+    let usedBy = [];
+    try {
+      usedBy = (await api.get(`/credentials/${c.id}/usage`)).data;
+    } catch {
+      /* ignore */
+    }
+    const warning = usedBy.length
+      ? `“${c.name}” is used by: ${usedBy.map((u) => u.visible ? u.name : 'an automation you cannot see').join(', ')}. They will fail until another connection is chosen. Delete anyway?`
+      : `Delete connection “${c.name}”?`;
+    if (!confirm(warning)) return;
     try {
       await api.delete(`/credentials/${c.id}`);
       load();
@@ -35,6 +55,7 @@ export default function Connections() {
       />
       <div className="flex-1 space-y-3 overflow-y-auto p-6">
         <Alert>{error}</Alert>
+        {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
         {!items.length ? (
           <Empty>No connections yet.</Empty>
         ) : (
@@ -54,6 +75,7 @@ export default function Connections() {
                 </div>
                 {c.can_edit && (
                   <>
+                    <Button variant="ghost" onClick={() => test(c)}>Test</Button>
                     <Button variant="ghost" onClick={() => setEditing(c)}>Edit</Button>
                     <Button variant="ghost" onClick={() => remove(c)}>Delete</Button>
                   </>

@@ -10,6 +10,7 @@ export function outputKeys(node, catalog) {
   if (node.type === 'input') return (node.data?.fields || []).map((f) => f.key);
   if (node.type === 'condition') return ['result'];
   if (node.type === 'switch') return ['matched', 'value'];
+  if (node.type === 'loop') return ['results', 'count', 'errors'];
   if (node.type !== 'action') return [];
   const cfg = node.data?.config || {};
   if (node.data?.action === 'set_fields') return Object.keys(cfg.fields || {});
@@ -89,9 +90,11 @@ export function VarText({ value, onChange, groups, multiline, placeholder, rows 
   const cls = 'w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
   return (
     <div>
-      <div className="-mt-5 mb-1 flex justify-end">
-        <VariableMenu groups={groups} onPick={insert} />
-      </div>
+      {groups.length > 0 && (
+        <div className="mb-1 flex justify-end">
+          <VariableMenu groups={groups} onPick={insert} />
+        </div>
+      )}
       {multiline ? (
         <textarea ref={ref} rows={rows} className={cls} placeholder={placeholder} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
       ) : (
@@ -175,13 +178,14 @@ function CredentialSelect({ value, onChange, credentialType, credentialTypes }) 
     <div className="flex gap-2">
       <Select value={value || ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : '')}>
         <option value="">{creds.length ? 'Choose a connection…' : 'No connections yet'}</option>
+        {value && !creds.some((c) => c.id === Number(value)) && <option value={value}>Set by the owner (not shared with you)</option>}
         {creds.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}
           </option>
         ))}
       </Select>
-      <Button variant="secondary" icon={Plus} onClick={() => setAdding(true)} title="New connection" />
+      <Button variant="secondary" icon={Plus} onClick={() => setAdding(true)} title="New connection" aria-label="New connection" />
       {adding && (
         <ConnectionEditor
           types={credentialTypes.filter((t) => types.includes(t.key))}

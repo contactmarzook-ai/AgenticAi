@@ -57,6 +57,7 @@ export default function Chat() {
     } catch (err) {
       setError(errorMessage(err));
       setInput(text);
+      setMessages((m) => m.filter((x) => !String(x.id).startsWith('tmp-')));
     } finally {
       setSending(false);
     }
@@ -177,6 +178,7 @@ export default function Chat() {
                   if (e.key === 'Enter' && !e.shiftKey) send(e);
                 }}
                 rows={1}
+                maxLength={8000}
                 placeholder="Message…  (Shift+Enter for a new line)"
                 className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />

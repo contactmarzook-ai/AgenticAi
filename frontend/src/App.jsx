@@ -15,6 +15,8 @@ import Users from './pages/Users';
 import Audit from './pages/Audit';
 import Monitoring from './pages/Monitoring';
 import ChangePassword from './pages/ChangePassword';
+import PublicForm from './pages/PublicForm';
+import { confirmLeave } from './lib/unsaved';
 
 const PAGES = [
   { id: 'automations', label: 'Automations', icon: Workflow, perm: 'workflow:read', component: Automations },
@@ -31,17 +33,23 @@ const PAGES = [
 ];
 
 function usePage() {
-  const read = () => window.location.hash.replace('#/', '').split('?')[0] || 'automations';
+  const read = () => window.location.hash.replace('#/', '').split('?')[0].split('/')[0] || 'automations';
   const [page, setPage] = useState(read);
   useEffect(() => {
     const onHash = () => setPage(read());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  return [page, (p) => (window.location.hash = `#/${p}`)];
+  return [page, (p) => { if (confirmLeave()) window.location.hash = `#/${p}`; }];
 }
 
 export default function App() {
+  const publicForm = window.location.hash.match(/^#\/f\/(\d+)\/([\w-]+)/);
+  if (publicForm) return <PublicForm id={publicForm[1]} token={publicForm[2]} />;
+  return <SignedInApp />;
+}
+
+function SignedInApp() {
   const { token, user, setUser, logout } = useAuth();
   const [page, go] = usePage();
   const [showPassword, setShowPassword] = useState(false);
@@ -98,7 +106,7 @@ export default function App() {
           <button onClick={() => setShowPassword(true)} className="flex w-full items-center gap-2 rounded px-1 py-1 text-gray-600 hover:bg-gray-50">
             <KeyRound className="h-4 w-4" /> Change password
           </button>
-          <button onClick={logout} className="flex w-full items-center gap-2 rounded px-1 py-1 text-red-600 hover:bg-red-50">
+          <button onClick={() => confirmLeave() && logout()} className="flex w-full items-center gap-2 rounded px-1 py-1 text-red-600 hover:bg-red-50">
             <LogOut className="h-4 w-4" /> Sign out
           </button>
         </div>
