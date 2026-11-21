@@ -5,7 +5,7 @@ def test_provider_and_model_admin(client, admin):
     p = client.post(
         "/api/models/providers",
         headers=admin,
-        json={"name": "vllm", "base_url": "http://vllm:8000/v1/", "api_key_env": "VLLM_KEY"},
+        json={"name": "vllm", "base_url": "http://vllm:8000/v1/", "api_key_env": "LLM_KEY_VLLM"},
     )
     assert p.status_code == 201
     assert p.json()["base_url"] == "http://vllm:8000/v1"

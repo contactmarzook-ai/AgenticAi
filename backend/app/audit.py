@@ -14,9 +14,13 @@ logger = logging.getLogger("agentos.audit")
 def client_ip(request: Optional[Request]) -> Optional[str]:
     if request is None:
         return None
+    # Use the address appended by our own proxy (right-most entry); the left-most entries are
+    # whatever the client sent and can be forged (security finding L3).
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
     return request.client.host if request.client else None
 
 

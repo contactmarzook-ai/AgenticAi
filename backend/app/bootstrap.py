@@ -38,7 +38,9 @@ def _seed(db: Session) -> None:
 
     if db.query(LLMProvider).count() == 0 and settings.llm_base_url:
         provider = LLMProvider(
-            name="default", base_url=settings.llm_base_url.rstrip("/"), api_key_env=settings.llm_api_key_env or None
+            name="default",
+            base_url=settings.llm_base_url.rstrip("/"),
+            api_key_env=settings.llm_api_key_env if settings.llm_api_key_env.startswith("LLM_KEY_") else None,
         )
         db.add(provider)
         db.flush()

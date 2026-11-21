@@ -35,7 +35,19 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def enforce_concurrency(db: Session, user: User) -> None:
+    cap = settings.user_max_concurrent_runs
+    if cap <= 0:
+        return
+    active = db.query(Run).filter(Run.user_id == user.id, Run.status.in_(["queued", "running"])).count()
+    if active >= cap:
+        raise HTTPException(
+            status_code=429, detail=f"You already have {active} runs in progress; wait for one to finish"
+        )
+
+
 def enforce_rate_limit(db: Session, user: User) -> None:
+    enforce_concurrency(db, user)
     limit = settings.user_runs_per_minute
     if limit <= 0:
         return

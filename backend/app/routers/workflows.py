@@ -108,7 +108,7 @@ def create_workflow(
     user: User = Depends(require_permission("workflow:write")),
 ):
     """Create a new workflow, or a new draft version when group_id is given."""
-    version, group_id = 1, None
+    version, group_id, owner_id = 1, None, user.id
     if body.group_id:
         latest = db.query(Workflow).filter(Workflow.group_id == body.group_id).order_by(Workflow.version.desc()).first()
         if latest is None or not can_view(user, latest):
@@ -116,10 +116,12 @@ def create_workflow(
         _require_edit(user, latest)
         version = (db.query(func.max(Workflow.version)).filter(Workflow.group_id == body.group_id).scalar() or 0) + 1
         group_id = body.group_id
+        # A new version keeps the workflow's owner, whose access its steps use.
+        owner_id = latest.owner_id or user.id
 
     data = body.model_dump(exclude={"group_id"})
     data["department"] = (body.department or None) if user.role == "admin" else user.department
-    wf = Workflow(**data, version=version, status="draft", owner_id=user.id)
+    wf = Workflow(**data, version=version, status="draft", owner_id=owner_id)
     if group_id:
         wf.group_id = group_id
     db.add(wf)

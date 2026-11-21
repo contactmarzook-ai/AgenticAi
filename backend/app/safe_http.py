@@ -38,17 +38,42 @@ def _check_ips(host: str) -> None:
         raise BlockedRequest(f"Could not resolve host '{host}'") from exc
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
+        # Only globally routable addresses: this excludes private, loopback, link-local (cloud
+        # metadata), reserved, multicast and shared/carrier-grade NAT (100.64.0.0/10) ranges.
+        if not ip.is_global or ip.is_multicast:
             raise BlockedRequest(
-                f"Host '{host}' resolves to a private address ({ip}); private networks are not allowed"
+                f"Host '{host}' resolves to a non-public address ({ip}); private networks are not allowed"
             )
+
+
+SMTP_PORTS = {25, 465, 587, 2525}
+
+
+def check_smtp_host(host: str, port: int, settings: dict) -> None:
+    """Email servers get the same network protection as HTTP requests (security finding M3)."""
+    if int(port) not in SMTP_PORTS:
+        raise BlockedRequest(f"Port {port} is not an email port ({', '.join(map(str, sorted(SMTP_PORTS)))})")
+    if not settings.get("allow_private_network"):
+        _check_ips(host)
+
+
+# Built-in destinations for chat-app connections; anything else must be on the admin allowlist.
+WEBHOOK_HOSTS = {
+    "slack": ["hooks.slack.com"],
+    "teams": ["*.webhook.office.com", "outlook.office.com", "*.logic.azure.com", "*.powerplatform.com"],
+}
+
+
+def check_webhook_url(url: str, service: str, settings: dict) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise BlockedRequest("The webhook address must start with https://")
+    allowed = WEBHOOK_HOSTS.get(service, []) + list(settings.get("http_allowed_hosts") or [])
+    if not _host_allowed(parsed.hostname, allowed):
+        raise BlockedRequest(
+            f"'{parsed.hostname}' is not a {service.title()} webhook address. "
+            "An administrator can allow it under Settings > Outbound HTTP."
+        )
 
 
 def check_url(url: str, settings: dict, trusted_host: bool = False) -> None:

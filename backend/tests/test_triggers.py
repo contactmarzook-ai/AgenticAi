@@ -72,7 +72,7 @@ def test_webhook_auth_and_payload(client, admin, llm):
     trig = client.post(
         "/api/triggers",
         headers=admin,
-        json={"name": "hook", "workflow_group_id": wf["group_id"], "type": "webhook", "input": {"message": "default"}},
+        json={"name": "hook", "workflow_group_id": wf["group_id"], "type": "webhook", "input": {"channel": "ops"}},
     ).json()
     token = trig["webhook_token"]
     assert token.startswith("whk_")

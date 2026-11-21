@@ -178,7 +178,7 @@ def test_http_request_respects_allowlist_and_private_networks(client, admin, mon
 
     client.put("/api/settings", headers=admin, json={"http_allowed_hosts": ["*"]})
     _, run = save_and_test(client, admin, d)
-    assert "private address" in run.json()["error"]  # SSRF protection even with "*"
+    assert "non-public address" in run.json()["error"]  # SSRF protection even with "*"
 
     import httpx
 
@@ -290,6 +290,9 @@ def test_send_email_uses_connection(client, admin, monkeypatch):
     from app.nodes import app_nodes
 
     monkeypatch.setattr(app_nodes.smtplib, "SMTP", FakeSMTP)
+    from app import safe_http
+
+    monkeypatch.setattr(safe_http, "_check_ips", lambda host: None)  # smtp.test is not a real host
     cred = make_smtp(client, admin)
     d = chain(
         start(),

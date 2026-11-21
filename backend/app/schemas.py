@@ -66,7 +66,9 @@ class PasswordChange(BaseModel):
 class ProviderIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     base_url: str = Field(min_length=1, max_length=500)
-    api_key_env: Optional[str] = Field(default=None, max_length=100, pattern=r"^[A-Z_][A-Z0-9_]*$")
+    # Only variables named LLM_KEY_* can be referenced, so an admin cannot point a provider at
+    # other server secrets such as JWT_SECRET or CREDENTIALS_KEY (security finding M4).
+    api_key_env: Optional[str] = Field(default=None, max_length=100, pattern=r"^LLM_KEY_[A-Z0-9_]+$")
     is_active: bool = True
 
     @field_validator("base_url")

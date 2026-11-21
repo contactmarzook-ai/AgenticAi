@@ -196,16 +196,13 @@ async def _raw_body(request: Request) -> bytes:
     return await request.body()
 
 
-@hooks.post("/{trigger_id}", response_model=RunOut, status_code=202)
-def receive_webhook(
+def _verified_webhook(
     trigger_id: int,
     request: Request,
     db: Session = Depends(get_db),
     x_webhook_token: str = Header(default=""),
-    raw: bytes = Depends(_raw_body),
-):
-    """Start the trigger's active workflow. Authenticate with header `X-Webhook-Token`.
-    The JSON body (an object) is merged over the trigger's default input."""
+) -> Trigger:
+    """Checked before the request body is read (dependencies resolve in order)."""
     trig = db.get(Trigger, trigger_id)
     valid = (
         trig is not None
@@ -217,7 +214,19 @@ def receive_webhook(
     if not valid:
         audit(db, "webhook.receive", resource_type="trigger", resource_id=trigger_id, status="denied", request=request)
         raise HTTPException(status_code=404, detail="Not found")
+    return trig
 
+
+@hooks.post("/{trigger_id}", response_model=RunOut, status_code=202)
+def receive_webhook(
+    trigger_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    trig: Trigger = Depends(_verified_webhook),
+    raw: bytes = Depends(_raw_body),
+):
+    """Start the trigger's active workflow. Authenticate with header `X-Webhook-Token`.
+    The JSON body (an object) supplies the input; values fixed on the trigger take precedence."""
     if len(raw) > MAX_WEBHOOK_BODY_BYTES:
         raise HTTPException(status_code=413, detail="Payload too large")
     payload: Any = {}
@@ -230,7 +239,8 @@ def receive_webhook(
             raise HTTPException(status_code=400, detail="Body must be a JSON object")
 
     try:
-        run = start_trigger_run(db, trig, {**(trig.input or {}), **payload}, "webhook")
+        # Values fixed on the trigger win over the caller's (security finding M2).
+        run = start_trigger_run(db, trig, {**payload, **(trig.input or {})}, "webhook")
     except InputProblem as exc:
         audit(
             db,
@@ -302,7 +312,12 @@ def submit_public_form(
     if recent >= FORM_SUBMISSIONS_PER_MINUTE:
         raise HTTPException(status_code=429, detail="Too many submissions right now. Please try again in a minute.")
     try:
-        run = start_trigger_run(db, trig, {**(trig.input or {}), **body.input}, "form_link")
+        # Anonymous submitters may only fill the form's own fields, and cannot change values
+        # fixed on the trigger (security finding M2).
+        wf_now = active_version(db, trig.workflow_group_id)
+        declared = {f["key"] for f in form_fields((wf_now.definition if wf_now else {}) or {})}
+        submitted = {k: v for k, v in (body.input or {}).items() if k in declared}
+        run = start_trigger_run(db, trig, {**submitted, **(trig.input or {})}, "form_link")
     except InputProblem as exc:
         raise HTTPException(
             status_code=400, detail={"message": "Please check the form", "errors": exc.problems}

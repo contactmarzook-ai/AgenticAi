@@ -109,11 +109,12 @@ def can_view(user: User, resource) -> bool:
 
 
 def can_edit(user: User, resource) -> bool:
+    """Only the owner or an admin may change an agent or workflow.
+
+    Others with access can view, run and duplicate it (a duplicate belongs to them). Editing is
+    owner-only because a workflow runs with its owner's agents and connections: letting someone
+    else change it would let them use the owner's access (security finding C1).
+    """
     if user.role == "admin":
         return True
-    if not has_permission(user, "agent:write"):
-        return False
-    if resource.owner_id == user.id:
-        return True
-    # Builders may edit department-shared resources of their own department.
-    return resource.visibility != "private" and bool(resource.department) and resource.department == user.department
+    return has_permission(user, "agent:write") and resource.owner_id == user.id

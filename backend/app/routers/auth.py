@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from ..audit import audit
+from ..audit import audit, client_ip
 from ..config import settings
 from ..database import get_db
-from ..models import User
+from ..models import AuditLog, User
 from ..rbac import get_current_user, permissions_for
 from ..schemas import LoginRequest, MeOut, PasswordChange, TokenResponse
 from ..security import (
@@ -30,6 +30,25 @@ def _aware(dt):
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     email = body.email.lower()
+    # Per-address limit on failed sign-ins, so one client cannot lock accounts or guess
+    # passwords at bcrypt speed across many emails (security finding L4).
+    ip = client_ip(request)
+    if ip and settings.login_ip_failures_per_10min > 0:
+        recent = (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.action == "auth.login",
+                AuditLog.status != "success",
+                AuditLog.ip_address == ip,
+                AuditLog.created_at >= datetime.now(timezone.utc) - timedelta(minutes=10),
+            )
+            .count()
+        )
+        if recent >= settings.login_ip_failures_per_10min:
+            raise HTTPException(
+                status_code=429, detail="Too many failed sign-ins from your network. Try again in a few minutes."
+            )
+
     user = db.query(User).filter(User.email == email).first()
     now = datetime.now(timezone.utc)
     invalid = HTTPException(status_code=401, detail="Invalid email or password")

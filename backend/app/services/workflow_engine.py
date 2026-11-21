@@ -205,6 +205,22 @@ def topological_order(nodes: list[dict], edges: list[dict]) -> list[str]:
     return order
 
 
+SECRET_KEY_RE = re.compile(r"(authorization|api[-_ ]?key|token|secret|password|passwd|cookie)", re.I)
+
+
+def mask_secrets(value: Any) -> Any:
+    """Copy of `value` for the run history with secret-looking fields hidden (the step itself
+    still receives the real values)."""
+    if isinstance(value, dict):
+        return {
+            k: ("••••••" if SECRET_KEY_RE.search(str(k)) and v not in (None, "") else mask_secrets(v))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [mask_secrets(v) for v in value]
+    return value
+
+
 def _wrap(result: Any) -> dict:
     return result if isinstance(result, dict) else {"result": result}
 
@@ -299,6 +315,7 @@ def run_definition(
                     step,
                     branching_ids,
                     last_output,
+                    deadline,
                 )
                 break
             except Exception as exc:  # noqa: BLE001 - every failure is reported on the step
@@ -331,7 +348,7 @@ def run_definition(
 MAX_LOOP_ITEMS = 200
 
 
-def _run_loop(data, outputs, workflow_input, call_action, node, step):
+def _run_loop(data, outputs, workflow_input, call_action, node, step, deadline=None):
     """Repeat for each: run one catalogue step for every item of a list.
     Inside the step, {{item}} / {{item.field}} is the current item and {{index}} its position (from 1)."""
     if call_action is None:
@@ -358,6 +375,8 @@ def _run_loop(data, outputs, workflow_input, call_action, node, step):
     results, errors = [], 0
     step["input"] = {"items": len(items), "action": data.get("action")}
     for i, item in enumerate(items, start=1):
+        if deadline is not None and time.monotonic() > deadline:
+            raise WorkflowError(f"Workflow exceeded its time limit after {i - 1} of {len(items)} items")
         scope = {**outputs, "item": item, "index": i}
         config = resolve_value(data.get("config") or {}, scope, workflow_input)
         try:
@@ -383,6 +402,7 @@ def _execute_node(
     step,
     branching_ids=frozenset(),
     last_output=None,
+    deadline=None,
 ):
     mappings = data.get("mappings") or {}
     if ntype == "input":
@@ -392,14 +412,14 @@ def _execute_node(
         if call_action is None:
             raise WorkflowError("Action steps are not available here")
         config = resolve_value(data.get("config") or {}, outputs, workflow_input)
-        step["input"] = config
+        step["input"] = mask_secrets(config)
         return _wrap(call_action(str(data.get("action") or ""), config, node))
 
     if ntype == "condition":
         return {"result": evaluate_condition(data.get("condition") or {}, outputs, workflow_input)}
 
     if ntype == "loop":
-        return _run_loop(data, outputs, workflow_input, call_action, node, step)
+        return _run_loop(data, outputs, workflow_input, call_action, node, step, deadline)
 
     if ntype == "switch":
         value = resolve_value(data.get("value", ""), outputs, workflow_input)

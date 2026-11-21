@@ -10,6 +10,7 @@ from ..models import Agent, ChatMessage, ChatSession, User, utcnow
 from ..rbac import can_view, require_permission
 from ..schemas import ChatMessageOut, ChatSend, ChatSessionIn, ChatSessionOut
 from ..services.orchestrator import handle_message
+from ..services.runs import enforce_concurrency
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 chat_user = require_permission("chat:use")
@@ -78,6 +79,7 @@ def send_message(
     if len(text) > settings.max_message_chars:
         raise HTTPException(status_code=413, detail=f"Message longer than {settings.max_message_chars} characters")
     _chat_rate_limit(db, user)
+    enforce_concurrency(db, user)
     reply = handle_message(db, session, user, text)
     meta = reply.metadata_json or {}
     audit(

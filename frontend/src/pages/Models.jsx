@@ -136,8 +136,8 @@ function ProviderForm({ value, onClose, onSaved }) {
         <Alert>{error}</Alert>
         <Field label="Name"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Base URL" hint="Must end with /v1 for Ollama and vLLM, e.g. http://ollama:11434/v1"><Input value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} /></Field>
-        <Field label="API key environment variable" hint="Optional. The NAME of an env var on the server holding the key (e.g. VLLM_API_KEY). Keys are never stored in the database.">
-          <Input value={f.api_key_env} onChange={(e) => setF({ ...f, api_key_env: e.target.value.toUpperCase() })} />
+        <Field label="API key environment variable" hint="Optional. The NAME of an env var on the server holding the key. It must start with LLM_KEY_ (e.g. LLM_KEY_VLLM). Keys are never stored in the database.">
+          <Input value={f.api_key_env} onChange={(e) => setF({ ...f, api_key_env: e.target.value.toUpperCase() })} placeholder="LLM_KEY_..." />
         </Field>
         <Checkbox label="Active" checked={f.is_active} onChange={(e) => setF({ ...f, is_active: e.target.checked })} />
       </div>

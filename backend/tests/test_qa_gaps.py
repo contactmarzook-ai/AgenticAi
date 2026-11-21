@@ -296,7 +296,7 @@ def test_connection_checks(client, admin):
     assert r.status_code == 400 and "https://" in r.json()["detail"]
     cred = make_smtp(client, admin)
     res = client.post(f"/api/credentials/{cred['id']}/test", headers=admin).json()
-    assert res["ok"] is False and "Could not reach" in res["message"]
+    assert res["ok"] is False and ("Could not reach" in res["message"] or "Could not resolve" in res["message"])
 
 
 def test_repeat_for_each(client, admin, llm):

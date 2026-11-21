@@ -41,6 +41,16 @@ def _out(cred: Credential, user: User) -> CredentialOut:
     return out
 
 
+def _check_destination(db: Session, ctype_key: str, data: dict) -> None:
+    try:
+        if ctype_key in ("slack_webhook", "teams_webhook") and data.get("url"):
+            safe_http.check_webhook_url(
+                str(data["url"]), "slack" if ctype_key == "slack_webhook" else "teams", get_settings(db)
+            )
+    except safe_http.BlockedRequest as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _clean(ctype, data: dict, existing: dict | None = None) -> dict:
     result = {}
     for f in ctype.fields:
@@ -61,6 +71,12 @@ def _clean(ctype, data: dict, existing: dict | None = None) -> dict:
         if value not in (None, ""):
             result[f.key] = value
     return result
+
+
+def _checked(db: Session, ctype, data: dict, existing: dict | None = None) -> dict:
+    cleaned = _clean(ctype, data, existing)
+    _check_destination(db, ctype.key, cleaned)
+    return cleaned
 
 
 def _get(db: Session, cred_id: int, user: User) -> Credential:
@@ -89,7 +105,7 @@ def create_credential(
     cred = Credential(
         name=body.name,
         type=body.type,
-        data_encrypted=encrypt_json(_clean(ctype, body.data)),
+        data_encrypted=encrypt_json(_checked(db, ctype, body.data)),
         visibility=body.visibility,
         department=user.department,
         owner_id=user.id,
@@ -124,7 +140,7 @@ def update_credential(
     if body.type != cred.type:
         raise HTTPException(status_code=400, detail="The connection type cannot be changed")
     ctype = CREDENTIAL_TYPES[cred.type]
-    cred.data_encrypted = encrypt_json(_clean(ctype, body.data, decrypt_json(cred.data_encrypted)))
+    cred.data_encrypted = encrypt_json(_checked(db, ctype, body.data, decrypt_json(cred.data_encrypted)))
     cred.name = body.name
     cred.visibility = body.visibility
     audit(
@@ -167,7 +183,13 @@ def usage(cred_id: int, db: Session = Depends(get_db), user: User = Depends(get_
     _get(db, cred_id, user)
     rows = db.query(Workflow).filter(Workflow.status != "archived").all()
     return [
-        {"id": w.id, "name": w.name, "status": w.status, "version": w.version, "visible": can_view(user, w)}
+        {
+            "id": w.id if can_view(user, w) else None,
+            "name": w.name if can_view(user, w) else None,
+            "status": w.status,
+            "version": w.version,
+            "visible": can_view(user, w),
+        }
         for w in rows
         if _uses(w.definition, cred_id)
     ]
@@ -179,10 +201,15 @@ def test_credential(
 ):
     """Check a connection works: Slack/Teams get a short test message; email signs in to the server."""
     cred = _get(db, cred_id, user)
+    if not _can_edit(user, cred):
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can test this connection")
     data = decrypt_json(cred.data_encrypted)
     ok, message = True, "Connected."
     try:
         if cred.type in ("slack_webhook", "teams_webhook"):
+            safe_http.check_webhook_url(
+                data["url"], "slack" if cred.type == "slack_webhook" else "teams", get_settings(db)
+            )
             resp = safe_http.request(
                 "POST",
                 data["url"],
@@ -194,6 +221,7 @@ def test_credential(
             ok = resp.status_code < 400
             message = "Test message sent." if ok else f"The service answered HTTP {resp.status_code}."
         elif cred.type == "smtp":
+            safe_http.check_smtp_host(data["host"], int(data.get("port") or 587), get_settings(db))
             security = data.get("security") or "starttls"
             server_cls = smtplib.SMTP_SSL if security == "ssl" else smtplib.SMTP
             with server_cls(data["host"], int(data.get("port") or 587), timeout=15) as server:

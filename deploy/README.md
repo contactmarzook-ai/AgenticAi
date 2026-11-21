@@ -74,7 +74,7 @@ copy in your secret manager: if it is lost or changed, saved connections can no 
 The bootstrap admin is only created while the users table is empty. After the first sign-in,
 change that password (sidebar → Change password) and you can remove the two `BOOTSTRAP_*` keys.
 
-LLM API keys (for hosted endpoints) go in the same Secret under any name, e.g. `VLLM_API_KEY`;
+LLM API keys (for hosted endpoints) go in the same Secret under a name starting with `LLM_KEY_`, e.g. `LLM_KEY_VLLM`;
 on the Models page set the provider's "API key environment variable" to that name.
 
 ### 4. Configure and apply

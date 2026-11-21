@@ -106,8 +106,14 @@ class LLMClient:
         )
 
 
+API_KEY_ENV_PREFIX = "LLM_KEY_"
+
+
 def resolve_api_key(api_key_env: Optional[str]) -> Optional[str]:
-    return os.getenv(api_key_env) if api_key_env else None
+    """Read a provider key, but only from LLM_KEY_* variables (rows saved before this rule are ignored)."""
+    if not api_key_env or not api_key_env.startswith(API_KEY_ENV_PREFIX):
+        return None
+    return os.getenv(api_key_env)
 
 
 _default_client = LLMClient()

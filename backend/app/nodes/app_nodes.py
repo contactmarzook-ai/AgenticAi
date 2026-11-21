@@ -162,6 +162,10 @@ def send_email(cfg: dict, ctx: NodeContext):
     msg.set_content(str(cfg["body"]))
     host, port, security = cred["host"], int(cred.get("port") or 587), cred.get("security") or "starttls"
     try:
+        safe_http.check_smtp_host(host, port, ctx.settings)
+    except safe_http.BlockedRequest as exc:
+        raise NodeError(f"Email could not be sent: {exc}") from exc
+    try:
         if security == "ssl":
             server = smtplib.SMTP_SSL(host, port, timeout=30, context=ssl.create_default_context())
         else:
@@ -184,8 +188,9 @@ def send_email(cfg: dict, ctx: NodeContext):
     return {"sent": True, "to": recipients + cc}
 
 
-def _post_webhook(url: str, payload: dict, ctx: NodeContext) -> dict:
+def _post_webhook(url: str, payload: dict, ctx: NodeContext, service: str) -> dict:
     try:
+        safe_http.check_webhook_url(url, service, ctx.settings)
         resp = safe_http.request("POST", url, ctx.settings, json_body=payload, trusted_host=True)
     except safe_http.BlockedRequest as exc:
         raise NodeError(str(exc)) from exc
@@ -210,7 +215,7 @@ def _post_webhook(url: str, payload: dict, ctx: NodeContext) -> dict:
 )
 def slack_message(cfg: dict, ctx: NodeContext):
     cred = ctx.get_credential(cfg["credential_id"], "slack_webhook")
-    return _post_webhook(cred["url"], {"text": str(cfg["text"])}, ctx)
+    return _post_webhook(cred["url"], {"text": str(cfg["text"])}, ctx, "slack")
 
 
 @node(
@@ -229,4 +234,4 @@ def slack_message(cfg: dict, ctx: NodeContext):
 def teams_message(cfg: dict, ctx: NodeContext):
     cred = ctx.get_credential(cfg["credential_id"], "teams_webhook")
     text = f"**{cfg['title']}**\n\n{cfg['text']}" if cfg.get("title") else str(cfg["text"])
-    return _post_webhook(cred["url"], {"text": text}, ctx)
+    return _post_webhook(cred["url"], {"text": text}, ctx, "teams")

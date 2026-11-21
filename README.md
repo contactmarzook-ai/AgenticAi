@@ -174,7 +174,7 @@ platform controls are changed by admins on the **Settings** page and stored in t
 | `LOG_JSON` | `false` | JSON logs (on in the container images) |
 
 LLM provider API keys are never stored in the database: a provider stores the *name* of an
-environment variable (e.g. `VLLM_API_KEY`) that holds the key.
+environment variable that holds the key; its name must start with `LLM_KEY_` (e.g. `LLM_KEY_VLLM`), so providers cannot read other server secrets.
 
 ## API
 

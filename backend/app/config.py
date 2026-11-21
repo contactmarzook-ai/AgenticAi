@@ -39,6 +39,7 @@ class Settings:
     credentials_key: str = field(default_factory=lambda: os.getenv("CREDENTIALS_KEY", DEV_CREDENTIALS_KEY))
     jwt_expire_minutes: int = field(default_factory=lambda: _int("JWT_EXPIRE_MINUTES", 480))
     login_max_attempts: int = field(default_factory=lambda: _int("LOGIN_MAX_ATTEMPTS", 5))
+    login_ip_failures_per_10min: int = field(default_factory=lambda: _int("LOGIN_IP_FAILURES_PER_10MIN", 30))
     login_lockout_minutes: int = field(default_factory=lambda: _int("LOGIN_LOCKOUT_MINUTES", 15))
     bcrypt_rounds: int = field(default_factory=lambda: _int("BCRYPT_ROUNDS", 12))
     password_min_length: int = field(default_factory=lambda: _int("PASSWORD_MIN_LENGTH", 12))
@@ -64,6 +65,7 @@ class Settings:
     max_message_chars: int = field(default_factory=lambda: _int("MAX_MESSAGE_CHARS", 8000))
 
     # Per-user rate limit on chat messages and runs (0 disables)
+    user_max_concurrent_runs: int = field(default_factory=lambda: _int("USER_MAX_CONCURRENT_RUNS", 5))
     user_runs_per_minute: int = field(default_factory=lambda: _int("USER_RUNS_PER_MINUTE", 30))
 
     # Tools
@@ -91,6 +93,8 @@ class Settings:
             or self.credentials_key.startswith("change-me")
         ):
             problems.append("CREDENTIALS_KEY must be set to a random value of at least 32 characters")
+        if "change-me" in self.database_url:
+            problems.append("DATABASE_URL still contains the placeholder password 'change-me'")
         if self.database_url.startswith("sqlite"):
             problems.append("DATABASE_URL must point to PostgreSQL in production")
         if self.auto_create_tables:
