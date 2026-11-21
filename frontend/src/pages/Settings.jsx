@@ -52,7 +52,7 @@ export default function Settings() {
       <div className="flex-1 space-y-6 overflow-y-auto p-6">
         {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
 
-        <section className="space-y-3 rounded-lg border bg-surface shadow-card p-5">
+        <section className="glass space-y-3 rounded-lg border p-5 shadow-card">
           <h2 className="font-semibold text-navy">Available steps</h2>
           <p className="text-sm text-muted-strong">Untick a step to remove it from the builder and block it in every workflow, including existing ones.</p>
           <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
@@ -60,7 +60,7 @@ export default function Settings() {
               const Icon = iconFor(n.icon);
               const st = CATEGORY_STYLE[n.category];
               return (
-                <label key={n.key} className={cx('flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm', disabled.has(n.key) && 'bg-app opacity-60')}>
+                <label key={n.key} className={cx('flex cursor-pointer items-start gap-2 rounded-md border border-navy-100 bg-white/60 p-2 text-sm transition-colors duration-150 hover:bg-white', disabled.has(n.key) && 'bg-navy-50/60 opacity-60')}>
                   <input type="checkbox" className="mt-1" checked={!disabled.has(n.key)} onChange={() => toggle(n.key)} />
                   <span className={cx('mt-0.5 rounded p-1', st.bg)}><Icon className={cx('h-3.5 w-3.5', st.text)} /></span>
                   <span>
@@ -73,7 +73,7 @@ export default function Settings() {
           </div>
         </section>
 
-        <section className="space-y-3 rounded-lg border bg-surface shadow-card p-5">
+        <section className="glass space-y-3 rounded-lg border p-5 shadow-card">
           <h2 className="font-semibold text-navy">Outbound HTTP</h2>
           <Field label="Hosts that HTTP request steps may call" hint="One host per line, e.g. api.example.com (a pasted URL is reduced to its host). Use *.example.com for subdomains, or * for any public host. Slack/Teams/email connections are not limited by this list.">
             <Textarea rows={5} value={hosts} onChange={(e) => setHosts(e.target.value)} placeholder={'api.yourcompany.com\n*.salesforce.com'} />
@@ -81,7 +81,7 @@ export default function Settings() {
           <Checkbox label="Allow private / internal network addresses (intranet APIs). Leave off unless needed: it lets workflows reach internal systems." checked={!!s.allow_private_network} onChange={(e) => setS({ ...s, allow_private_network: e.target.checked })} />
         </section>
 
-        <section className="grid gap-4 rounded-lg border bg-surface shadow-card p-5 md:grid-cols-2">
+        <section className="glass grid gap-4 rounded-lg border p-5 shadow-card md:grid-cols-2">
           <Field label="Who can create connections">
             <Select value={s.connections_min_role} onChange={(e) => setS({ ...s, connections_min_role: e.target.value })}>
               <option value="developer">Developers and admins</option>

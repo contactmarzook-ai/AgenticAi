@@ -51,39 +51,41 @@ export default function Login() {
   };
 
   return (
-    <div className="relative flex min-h-screen overflow-hidden bg-navy-900">
-      {/* Animated stardust: autonomous agents passing work along a flow */}
-      <div className="absolute inset-0 lg:right-[480px]">
-        <div className="absolute inset-0 bg-gradient-to-b from-navy-800 to-navy-900" />
+    <div className="relative flex min-h-screen overflow-hidden bg-[#050b18]">
+      {/* Full-screen galaxy behind everything */}
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_38%_50%,rgb(var(--navy-800))_0%,rgb(var(--navy-900))_45%,#040915_100%)]">
         <StarDustScene />
-        <div className="pointer-events-none absolute inset-x-0 top-0 hidden p-10 lg:block">
+        {/* Scrims keep the brand text readable over the galaxy */}
+        <div className="pointer-events-none absolute inset-0 hidden bg-[linear-gradient(to_top,rgb(4_9_21_/_0.88)_0%,rgb(4_9_21_/_0.45)_26%,transparent_48%),linear-gradient(to_bottom,rgb(4_9_21_/_0.55)_0%,transparent_18%)] lg:block" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_left,rgb(4_9_21_/_0.35),transparent_40%)]" />
+        <div className="pointer-events-none absolute left-0 top-0 hidden p-10 lg:block">
           <Logo size="lg" light />
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden p-10 lg:block">
+        <div className="pointer-events-none absolute bottom-0 left-0 hidden max-w-[calc(100%-520px)] p-10 lg:block">
           <div className="mb-4 h-1 w-12 rounded-full bg-accent" />
-          <h2 className="max-w-xl text-3xl font-semibold leading-tight text-white">Autonomous agents.<br />Workflows that run themselves.</h2>
-          <p className="mt-3 max-w-xl text-sm text-navy-100">
+          <h2 className="max-w-xl text-3xl font-semibold leading-tight text-white [text-shadow:0_2px_16px_rgb(4_9_21_/_0.8)]">Autonomous agents.<br />Workflows that run themselves.</h2>
+          <p className="mt-3 max-w-xl text-sm text-navy-100 [text-shadow:0_1px_10px_rgb(4_9_21_/_0.9)]">
             Describe what you need in plain words. {APP_NAME} turns it into AI-powered workflows that read, decide and act - on your own models, under your rules.
           </p>
         </div>
       </div>
 
-      {/* Sign-in card */}
-      <div className="relative z-10 ml-auto flex w-full items-center justify-center px-4 py-10 lg:w-[480px] lg:bg-surface">
-        <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl border border-white/10 bg-surface p-8 shadow-pop lg:border-0 lg:shadow-none">
+      {/* Sign-in card: frosted glass floating over the galaxy */}
+      <div className="relative z-10 ml-auto flex w-full items-center justify-center px-4 py-10 lg:w-[480px] lg:pr-12">
+        <form onSubmit={submit} className="login-glass w-full max-w-sm space-y-4 rounded-xl border p-8">
           <div className="pb-2">
             <div className="mb-6 lg:hidden"><Logo /></div>
             <h1 className="text-2xl font-semibold tracking-tight text-navy">Welcome back</h1>
-            <p className="mt-1 text-sm text-muted-strong">Sign in to {APP_NAME}</p>
+            <p className="mt-1 text-sm text-navy-600">Sign in to {APP_NAME}</p>
           </div>
           {expired && !error && <Alert kind="info">Your session ended. Please sign in again.</Alert>}
           <Alert>{error}</Alert>
           {methods.microsoft && (
-            <a href="/api/auth/oidc/login" className="flex w-full items-center justify-center gap-2 rounded-md border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink shadow-card hover:bg-brand-50">
+            <a href="/api/auth/oidc/login" className="flex w-full items-center justify-center gap-2 rounded-md border border-navy-100 bg-white/90 px-4 py-2.5 text-sm font-medium text-ink shadow-sm transition-colors duration-150 hover:bg-white">
               <MicrosoftMark /> Sign in with Microsoft
             </a>
           )}
-          {methods.microsoft && showPassword && <div className="text-center text-xs text-muted-strong">or</div>}
+          {methods.microsoft && showPassword && <div className="text-center text-xs text-navy-600">or</div>}
           {showPassword ? (
             <>
               <Field label="Email">
@@ -97,11 +99,11 @@ export default function Login() {
               </Button>
             </>
           ) : (
-            <button type="button" onClick={() => setShowPassword(true)} className="w-full text-center text-xs text-brand-600 hover:underline">
+            <button type="button" onClick={() => setShowPassword(true)} className="w-full text-center text-xs text-brand-700 hover:underline">
               Administrator sign-in with a password
             </button>
           )}
-          <p className="text-center text-xs text-muted-strong">Accounts are created by your administrator.</p>
+          <p className="text-center text-xs text-navy-600">Accounts are created by your administrator.</p>
         </form>
       </div>
     </div>

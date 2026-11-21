@@ -6,8 +6,114 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  background-color: rgb(var(--app));
+  background-color: rgb(var(--backdrop-base));
   color: rgb(var(--ink));
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Glassmorphism, defined once. Components use these classes (never ad-hoc blur):
+ *   .app-backdrop  static layered backdrop behind the shell (gives the glass something to blur)
+ *   .glass         content panels and cards
+ *   .glass-strong  modals, menus, popovers, tables, form fields (more opaque)
+ *   .glass-subtle  thin chrome strips (page header, toolbars)
+ *   .glass-dark    the navy sidebar
+ * Blur lives on containers only, never on table rows or list items.
+ */
+@layer components {
+  .app-backdrop {
+    background-color: rgb(var(--backdrop-base));
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.13 0 0 0 0 0.23 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+      radial-gradient(70rem 46rem at -12% -18%, rgb(var(--navy-800) / 0.62), transparent 62%),
+      radial-gradient(56rem 40rem at 108% 112%, rgb(var(--brand-600) / 0.42), transparent 62%),
+      radial-gradient(42rem 30rem at 92% -12%, rgb(var(--accent-500) / 0.16), transparent 64%),
+      radial-gradient(48rem 34rem at 58% 80%, rgb(var(--brand-300) / 0.24), transparent 66%),
+      radial-gradient(40rem 28rem at 12% 104%, rgb(var(--navy-500) / 0.30), transparent 62%),
+      linear-gradient(160deg, rgb(var(--brand-50)) 0%, rgb(var(--backdrop-base)) 55%, rgb(var(--brand-100)) 100%);
+  }
+
+  .glass,
+  .glass-strong,
+  .glass-subtle {
+    border-color: rgb(var(--glass-border) / var(--glass-border-alpha));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+  .glass {
+    background-color: rgb(var(--glass-tint) / var(--glass-alpha));
+  }
+  .glass-strong {
+    background-color: rgb(var(--glass-tint) / var(--glass-strong-alpha));
+  }
+  .glass-subtle {
+    background-color: rgb(var(--glass-tint) / var(--glass-subtle-alpha));
+  }
+  .glass-dark {
+    background-color: rgb(var(--glass-dark-tint) / var(--glass-dark-alpha));
+    background-image: linear-gradient(180deg, rgb(var(--navy-700) / 0.35), transparent 40%, rgb(var(--brand-700) / 0.18));
+    border-color: rgb(255 255 255 / 0.08);
+    -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(140%);
+    backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(140%);
+  }
+  /* A recessed well inside a glass panel (code, logs, nested settings). */
+  .glass-inset {
+    background-color: rgb(var(--navy-50) / 0.7);
+    border-color: rgb(var(--navy-100) / 0.9);
+  }
+  /* Interactive cards: a subtle lift on hover. */
+  .glass-hover {
+    transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
+  }
+  .glass-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgb(13 34 59 / 0.05), 0 12px 28px -6px rgb(13 34 59 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.6);
+  }
+  /* Primary action: a quiet brand gradient and a soft glow (no gradient text anywhere). */
+  .btn-primary-glass {
+    background-image: linear-gradient(180deg, rgb(var(--brand-500)), rgb(var(--brand-600)) 55%, rgb(var(--brand-700)));
+  }
+  .btn-primary-glass:hover:not(:disabled) {
+    background-image: linear-gradient(180deg, rgb(var(--brand-600)), rgb(var(--brand-700)));
+  }
+  .btn-primary-glass:disabled {
+    background-image: none;
+  }
+}
+
+/* Fallbacks: solid surfaces when blur is unsupported or transparency is unwanted. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-alpha: 1;
+    --glass-strong-alpha: 1;
+    --glass-subtle-alpha: 1;
+    --glass-dark-alpha: 1;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-alpha: 1;
+    --glass-strong-alpha: 1;
+    --glass-subtle-alpha: 1;
+    --glass-dark-alpha: 1;
+  }
+  .glass,
+  .glass-strong,
+  .glass-subtle,
+  .glass-dark {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .app-backdrop {
+    background-image: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-hover,
+  .glass-hover:hover {
+    transition: none;
+    transform: none;
+  }
 }
 
 /* Native checkboxes, radios and range inputs in the brand blue. */
@@ -18,15 +124,31 @@ input[type='range'] {
 }
 
 /* React Flow canvas controls and handles, in theme colours. */
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid rgb(var(--glass-border) / var(--glass-border-alpha));
+  border-radius: var(--radius-control);
+  background-color: rgb(var(--glass-tint) / var(--glass-strong-alpha));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: 0 4px 16px -4px rgb(13 34 59 / 0.18);
+}
 .react-flow__controls-button {
   color: rgb(var(--navy-700));
+  background: transparent;
   border-bottom-color: rgb(var(--line));
+  transition: background-color 150ms ease;
 }
 .react-flow__controls-button:hover {
   background: rgb(var(--brand-50));
 }
 .react-flow__handle {
   background: rgb(var(--navy-400));
+  border-color: rgb(255 255 255 / 0.9);
+}
+/* Canvas: a faint light wash over the backdrop so edges and labels stay crisp. */
+.react-flow.glass-canvas {
+  background-color: rgb(255 255 255 / 0.28);
 }
 
 @layer utilities {
@@ -50,4 +172,29 @@ input[type='range'] {
   box-shadow: none !important;
   width: auto;
   border-radius: 0;
+}
+.react-flow.glass-canvas .react-flow__background-pattern.dots {
+  fill: rgb(var(--navy-300) / 0.7);
+}
+
+/* Sign-in card over the galaxy: frosted, but opaque enough (84% white) that all of its text
+   (ink, navy, navy-600) keeps >= 6:1 contrast over the darkest part of the sky. */
+.login-glass {
+  background-color: rgb(255 255 255 / 0.84);
+  border-color: rgb(255 255 255 / 0.55);
+  box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.9);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(170%);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .login-glass {
+    background-color: rgb(var(--surface));
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .login-glass {
+    background-color: rgb(var(--surface));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }

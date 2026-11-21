@@ -28,10 +28,20 @@ export default {
       },
       borderColor: { DEFAULT: v('line') },
       ringColor: { DEFAULT: v('brand-600') },
-      boxShadow: {
-        card: '0 1px 2px rgb(23 59 101 / 0.05), 0 1px 3px rgb(23 59 101 / 0.04)',
-        pop: '0 10px 30px rgb(23 59 101 / 0.14), 0 2px 6px rgb(23 59 101 / 0.06)',
+      // Consistent radii from theme.css: controls 10px, panels 14px, hero cards 18px.
+      borderRadius: {
+        md: 'var(--radius-control)',
+        lg: 'var(--radius-panel)',
+        xl: 'var(--radius-hero)',
       },
+      boxShadow: {
+        // Soft, navy-tinted shadows with a 1px inner top highlight for the glass edge.
+        card: '0 1px 2px rgb(13 34 59 / 0.04), 0 4px 16px -4px rgb(13 34 59 / 0.10), inset 0 1px 0 rgb(255 255 255 / 0.6)',
+        pop: '0 24px 60px -12px rgb(13 34 59 / 0.35), 0 4px 14px rgb(13 34 59 / 0.10), inset 0 1px 0 rgb(255 255 255 / 0.7)',
+        lift: '0 2px 4px rgb(13 34 59 / 0.05), 0 12px 28px -6px rgb(13 34 59 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.6)',
+        glow: '0 4px 14px -2px rgb(36 102 165 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.18)',
+      },
+      backdropBlur: { glass: 'var(--glass-blur)' },
     },
   },
   plugins: [],

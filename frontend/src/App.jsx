@@ -74,17 +74,17 @@ function SignedInApp() {
     }
   }, [token, user, setUser, logout]);
 
-  if (!token && !resumed) return <div className="flex h-screen items-center justify-center text-sm text-muted-strong">Loading…</div>;
+  if (!token && !resumed) return <div className="app-backdrop flex h-screen items-center justify-center text-sm text-muted-strong">Loading…</div>;
   if (!token) return <Login />;
-  if (!user) return <div className="flex h-screen items-center justify-center text-sm text-muted-strong">Loading…</div>;
+  if (!user) return <div className="app-backdrop flex h-screen items-center justify-center text-sm text-muted-strong">Loading…</div>;
 
   const visible = PAGES.filter((p) => can(user, p.perm));
   const current = visible.find((p) => p.id === page && p.component) || visible.find((p) => p.component);
   const Page = current.component;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-app text-ink">
-      <aside className="flex w-16 flex-shrink-0 flex-col bg-navy text-navy-100 md:w-60">
+    <div className="app-backdrop flex h-screen overflow-hidden text-ink">
+      <aside className="glass-dark relative z-20 flex w-16 flex-shrink-0 flex-col border-r text-navy-100 shadow-[4px_0_24px_-8px_rgb(13_34_59_/_0.45)] md:w-60">
         <div className="flex justify-center px-3 py-5 md:justify-start md:px-5">
           <Logo light compact />
         </div>
@@ -100,8 +100,8 @@ function SignedInApp() {
                 onClick={() => go(p.id)}
                 title={p.label}
                 className={cx(
-                  'flex w-full items-center justify-center gap-3 rounded-md px-3 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 md:justify-start',
-                  current.id === p.id ? 'bg-brand-600 font-medium text-white shadow-sm' : 'text-navy-100 hover:bg-navy-600 hover:text-white',
+                  'flex w-full items-center justify-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 md:justify-start',
+                  current.id === p.id ? 'btn-primary-glass bg-brand-600 font-medium text-white shadow-glow ring-1 ring-inset ring-white/15' : 'text-navy-100 hover:bg-white/10 hover:text-white',
                 )}
               >
                 <p.icon className="h-4 w-4 flex-shrink-0" />
@@ -117,10 +117,10 @@ function SignedInApp() {
             {user.org_name ? ` · ${user.org_name}` : ''}
             {user.department ? ` · ${user.department}` : ''}
           </div>
-          {user.auth_provider !== 'oidc' && <button onClick={() => setShowPassword(true)} title="Change password" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-navy-100 hover:bg-navy-600 hover:text-white md:justify-start">
+          {user.auth_provider !== 'oidc' && <button onClick={() => setShowPassword(true)} title="Change password" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-navy-100 transition-colors duration-150 hover:bg-white/10 hover:text-white md:justify-start">
             <KeyRound className="h-4 w-4 flex-shrink-0" /> <span className="hidden md:inline">Change password</span>
           </button>}
-          <button onClick={() => confirmLeave() && signOut()} title="Sign out" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-red-200 hover:bg-red-500/15 hover:text-white md:justify-start">
+          <button onClick={() => confirmLeave() && signOut()} title="Sign out" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-red-200 transition-colors duration-150 hover:bg-red-500/20 hover:text-white md:justify-start">
             <LogOut className="h-4 w-4 flex-shrink-0" /> <span className="hidden md:inline">Sign out</span>
           </button>
         </div>

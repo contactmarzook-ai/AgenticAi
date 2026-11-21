@@ -161,7 +161,7 @@ export default function Automations({ user }) {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
         {canBuild && (
-          <section className="rounded-lg border bg-surface p-4 shadow-card sm:p-6">
+          <section className="glass rounded-xl border p-4 shadow-card sm:p-6">
             <h1 className="flex items-center gap-2 text-xl font-semibold text-navy">
               <Sparkles className="h-5 w-5 text-accent-600" /> What would you like to automate?
             </h1>
@@ -174,11 +174,11 @@ export default function Automations({ user }) {
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={3}
                   placeholder="e.g. When a customer emails a complaint, summarize it, decide how urgent it is, and post urgent ones to Slack"
-                  className="mt-4 w-full resize-none rounded-lg border border-line px-3 py-2.5 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+                  className="mt-4 w-full resize-none rounded-lg border border-navy-100 px-3 py-2.5 text-sm transition-[border-color,box-shadow] duration-150 placeholder:text-muted bg-white/90 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/20"
                 />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {EXAMPLES.map((ex) => (
-                    <button key={ex} onClick={() => setPrompt(ex)} className="rounded-full border px-2.5 py-1 text-xs text-muted-strong hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700">{ex}</button>
+                    <button key={ex} onClick={() => setPrompt(ex)} className="rounded-full border border-navy-100 bg-white/70 px-2.5 py-1 text-xs text-muted-strong transition-colors duration-150 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700">{ex}</button>
                   ))}
                 </div>
               </>
@@ -209,20 +209,20 @@ export default function Automations({ user }) {
             {groups.length > 4 || query ? (
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-4 w-4 text-muted" />
-                <input className="rounded-md border py-1.5 pl-7 pr-2 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <input className="rounded-md border border-navy-100 py-1.5 pl-7 pr-2 text-sm placeholder:text-muted bg-white/90 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/20" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
               </div>
             ) : null}
           </div>
           {!groups.length ? (
             <Empty>{canBuild ? 'Nothing yet. Describe one above or pick a template.' : 'No workflows are shared with you yet.'}</Empty>
           ) : (
-            <div className="divide-y rounded-lg border bg-surface shadow-card">
+            <div className="glass divide-y divide-line/80 rounded-lg border shadow-card">
               {groups.map(({ latest, live, lastOff }) => {
                 const wf = live || latest;
                 const off = !live && !!lastOff;
                 const isOwner = isAdmin(user) || latest.owner_id === user.id;
                 return (
-                  <div key={latest.group_id} className="flex flex-wrap items-center gap-2 px-5 py-4">
+                  <div key={latest.group_id} className="flex flex-wrap items-center gap-2 px-5 py-4 transition-colors duration-150 first:rounded-t-lg last:rounded-b-lg hover:bg-white/60">
                     <div className="min-w-[14rem] flex-1">
                       <div className="flex items-center gap-2">
                         <button className="truncate font-medium text-ink hover:underline" onClick={() => setOpen({ workflow: latest })}>{wf.name}</button>
@@ -258,7 +258,7 @@ export default function Automations({ user }) {
         <Modal wide title="Templates" onClose={() => setShowTemplates(false)}>
           <div className="grid gap-3 md:grid-cols-2">
             {templates.map((t) => (
-              <button key={t.key} disabled={creating} onClick={() => applyTemplate(t)} className="rounded-lg border p-4 text-left hover:border-brand-400 hover:bg-brand-50/40">
+              <button key={t.key} disabled={creating} onClick={() => applyTemplate(t)} className="glass-hover rounded-lg border border-navy-100 bg-white/75 p-4 text-left hover:border-brand-300 hover:bg-white">
                 <div className="text-xs font-medium uppercase text-muted-strong">{t.category}</div>
                 <div className="font-medium text-ink">{t.name}</div>
                 <p className="mt-1 text-sm text-muted-strong">{t.description}</p>

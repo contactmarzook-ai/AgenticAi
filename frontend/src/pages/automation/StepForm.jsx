@@ -59,7 +59,7 @@ function VariableMenu({ groups, onPick }) {
         <Variable className="h-3.5 w-3.5" /> Insert data
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-y-auto rounded-md border bg-surface p-2 shadow-pop">
+        <div className="glass-strong absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border p-2 shadow-pop">
           {groups.map((g) => (
             <div key={g.root} className="mb-2">
               <div className="px-1 text-[11px] font-semibold uppercase text-muted-strong">{g.label}</div>
@@ -119,7 +119,7 @@ function KeyValueEditor({ value, onChange, groups }) {
   return (
     <div className="space-y-2">
       {rows.map(([k, v], i) => (
-        <div key={i} className="rounded border bg-app p-2">
+        <div key={i} className="rounded border bg-navy-50/60 p-2">
           <div className="mb-1 flex items-center gap-1">
             <input className="flex-1 rounded border px-2 py-1 font-mono text-xs" value={k} onChange={(e) => update(i, e.target.value.replace(/\s/g, '_'), v)} />
             <button type="button" onClick={() => onChange(Object.fromEntries(rows.filter((_, j) => j !== i)))} className="p-1 text-muted hover:text-red-600" aria-label="Remove">
@@ -222,7 +222,7 @@ function AgentInputEditor({ agent, value, groups, onChange }) {
     onChange(next);
   };
   return (
-    <div className="space-y-2 rounded-md border border-line bg-app p-2">
+    <div className="space-y-2 rounded-md border border-line bg-navy-50/60 p-2">
       {Object.entries(props).map(([k, sub]) => {
         const v = current[k];
         const text = v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v);

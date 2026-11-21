@@ -6,11 +6,12 @@ export function cx(...classes) {
 }
 
 const BUTTON = {
-  primary: 'bg-brand-600 text-white shadow-sm hover:bg-brand-700 disabled:bg-brand-300',
+  // Subtle brand gradient + soft glow (from index.css); no gradient text anywhere.
+  primary: 'btn-primary-glass bg-brand-600 text-white shadow-glow hover:bg-brand-700 disabled:bg-brand-300 disabled:shadow-none',
   // The one orange call-to-action per screen: dark text on the orange fill (never white).
   accent: 'bg-accent text-navy-900 shadow-sm hover:bg-accent-600 disabled:bg-accent-100 disabled:text-muted-strong',
-  secondary: 'bg-surface text-ink border border-line shadow-sm hover:border-brand-200 hover:bg-brand-50 disabled:text-muted',
-  danger: 'bg-surface text-red-700 border border-red-200 hover:bg-red-50 disabled:text-red-300',
+  secondary: 'bg-white/85 text-ink border border-navy-100 shadow-sm hover:border-brand-200 hover:bg-brand-50 disabled:text-muted',
+  danger: 'bg-white/85 text-red-700 border border-red-200 shadow-sm hover:bg-red-50 disabled:text-red-300',
   ghost: 'text-muted-strong hover:bg-brand-50 hover:text-brand-700 disabled:text-muted/60',
 };
 
@@ -19,7 +20,7 @@ export function Button({ variant = 'primary', loading, className, children, icon
     <button
       type="button"
       className={cx(
-        'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 disabled:cursor-not-allowed',
         BUTTON[variant],
         className,
       )}
@@ -42,7 +43,8 @@ export function Field({ label, hint, children, className }) {
   );
 }
 
-const INPUT = 'w-full rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm text-ink placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20 disabled:bg-app disabled:text-muted-strong';
+// Frosted fields: nearly opaque white so typed text keeps full contrast, with a clear focus ring.
+const INPUT = 'w-full rounded-md border border-navy-100 bg-white/90 px-2.5 py-1.5 text-sm text-ink shadow-[inset_0_1px_2px_rgb(13_34_59_/_0.05)] transition-[border-color,box-shadow] duration-150 placeholder:text-muted hover:border-navy-200 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/20 disabled:bg-navy-50/80 disabled:text-muted-strong';
 
 export function Input(props) {
   return <input {...props} className={cx(INPUT, props.className)} />;
@@ -54,7 +56,7 @@ export function Textarea(props) {
 
 export function Select({ children, ...props }) {
   return (
-    <select {...props} className={cx(INPUT, 'bg-surface', props.className)}>
+    <select {...props} className={cx(INPUT, props.className)}>
       {children}
     </select>
   );
@@ -96,21 +98,21 @@ export function Modal({ title, onClose, children, footer, wide }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/40 p-4" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/45 p-4 backdrop-blur-[3px]" onMouseDown={onClose}>
       <div
-        className={cx('flex max-h-[90vh] w-full flex-col rounded-lg border bg-surface shadow-pop', wide ? 'max-w-4xl' : 'max-w-xl')}
+        className={cx('glass-strong flex max-h-[90vh] w-full flex-col rounded-xl border shadow-pop', wide ? 'max-w-4xl' : 'max-w-xl')}
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={title}
       >
-        <div className="flex items-center justify-between border-b px-5 py-3">
+        <div className="flex items-center justify-between border-b border-line/80 px-5 py-3.5">
           <h2 className="text-base font-semibold text-navy">{title}</h2>
-          <button onClick={onClose} className="rounded p-1 text-muted hover:bg-brand-50 hover:text-ink" aria-label="Close">
+          <button onClick={onClose} className="rounded-md p-1 text-muted-strong transition-colors hover:bg-brand-50 hover:text-ink" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t px-5 py-3">{footer}</div>}
+        {footer && <div className="flex justify-end gap-2 rounded-b-xl border-t border-line/80 bg-navy-50/50 px-5 py-3">{footer}</div>}
       </div>
     </div>
   );
@@ -118,7 +120,7 @@ export function Modal({ title, onClose, children, footer, wide }) {
 
 export function PageHeader({ title, subtitle, actions }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-surface px-4 py-4 sm:px-6">
+    <div className="glass-subtle relative z-10 flex flex-wrap items-center justify-between gap-3 border-b px-4 py-4 shadow-[0_1px_0_rgb(13_34_59_/_0.04)] sm:px-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-navy">{title}</h1>
         {subtitle && <p className="text-sm text-muted-strong">{subtitle}</p>}
@@ -130,20 +132,20 @@ export function PageHeader({ title, subtitle, actions }) {
 
 export function Alert({ kind = 'error', children }) {
   if (!children) return null;
-  const style = kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-brand-100 bg-brand-50 text-brand-800';
+  const style = kind === 'error' ? 'border-red-200 bg-red-50/95 text-red-700' : kind === 'success' ? 'border-green-200 bg-green-50/95 text-green-800' : 'border-brand-200 bg-brand-50/95 text-brand-800';
   return <div className={cx('rounded-md border px-3 py-2 text-sm', style)}>{children}</div>;
 }
 
 export function Empty({ children }) {
-  return <div className="rounded-lg border border-dashed border-navy-100 bg-surface p-8 text-center text-sm text-muted-strong">{children}</div>;
+  return <div className="glass rounded-lg border border-dashed border-navy-200 p-8 text-center text-sm text-muted-strong">{children}</div>;
 }
 
 export function Table({ columns, rows, onRowClick, empty = 'Nothing here yet.' }) {
   if (!rows.length) return <Empty>{empty}</Empty>;
   return (
-    <div className="overflow-x-auto rounded-lg border bg-surface shadow-card">
+    <div className="glass-strong overflow-x-auto rounded-lg border shadow-card">
       <table className="min-w-full divide-y divide-line text-sm">
-        <thead className="bg-app">
+        <thead className="bg-navy-50/70">
           <tr>
             {columns.map((c) => (
               <th key={c.key} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-navy">
@@ -154,7 +156,7 @@ export function Table({ columns, rows, onRowClick, empty = 'Nothing here yet.' }
         </thead>
         <tbody className="divide-y divide-line">
           {rows.map((row, i) => (
-            <tr key={row.id ?? i} onClick={onRowClick ? () => onRowClick(row) : undefined} className={onRowClick ? 'cursor-pointer hover:bg-brand-50/70' : ''}>
+            <tr key={row.id ?? i} onClick={onRowClick ? () => onRowClick(row) : undefined} className={onRowClick ? 'cursor-pointer transition-colors duration-150 hover:bg-brand-50' : ''}>
               {columns.map((c) => (
                 <td key={c.key} className={cx('px-4 py-2.5 align-top text-ink', c.className)}>
                   {c.render ? c.render(row) : row[c.key]}
@@ -176,6 +178,6 @@ export function formatDate(value) {
 
 export function JsonBlock({ value }) {
   return (
-    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-navy-900 p-3 text-xs text-navy-50">{JSON.stringify(value, null, 2)}</pre>
+    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-navy-900/95 p-3 text-xs text-navy-50 ring-1 ring-inset ring-white/10">{JSON.stringify(value, null, 2)}</pre>
   );
 }

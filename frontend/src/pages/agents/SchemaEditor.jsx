@@ -115,7 +115,7 @@ function PropertyRow({ name, node, required, onRename, onChange, onRequired, onR
         )}
       </div>
       {nested && open && (
-        <div className="border-t border-line bg-app p-2 pl-6">
+        <div className="border-t border-line bg-navy-50/60 p-2 pl-6">
           <PropertyList node={nested} onChange={setNested} depth={depth + 1} />
         </div>
       )}

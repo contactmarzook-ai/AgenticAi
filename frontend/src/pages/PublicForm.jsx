@@ -38,8 +38,8 @@ export default function PublicForm({ id, token }) {
   };
 
   return (
-    <div className="min-h-screen bg-app px-4 py-10">
-      <div className="mx-auto max-w-xl rounded-lg border bg-surface p-8 shadow-card">
+    <div className="app-backdrop min-h-screen px-4 py-10">
+      <div className="glass mx-auto max-w-xl rounded-xl border p-8 shadow-pop">
         {!form && !error && <p className="text-sm text-muted-strong">Loading…</p>}
         {!form && error && <Alert>{error}</Alert>}
         {form && !done && (

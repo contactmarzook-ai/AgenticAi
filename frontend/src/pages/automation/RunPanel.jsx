@@ -33,7 +33,7 @@ function RunDuration({ run }) {
 export function RunBar({ run, onCancel, cancelling, onClear, onShowDetails, otherVersion }) {
   const active = isActive(run);
   return (
-    <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-lg border bg-surface/95 px-3 py-1.5 text-xs shadow-card backdrop-blur">
+    <div className="glass-strong pointer-events-auto flex max-w-full items-center gap-2 rounded-lg border px-3 py-1.5 text-xs shadow-lift">
       {active ? <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-600" /> : <NodeRunIcon status={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'failed' : 'cancelled'} className="h-3.5 w-3.5" />}
       <button type="button" onClick={onShowDetails} className="font-medium text-navy hover:underline">
         {run.source === 'test' ? 'Test' : 'Run'} #{run.id}
@@ -61,7 +61,7 @@ export function NodeRunDetails({ state, run }) {
   const status = displayStatus(state);
   const ms = durationOf(state.started_at, state.finished_at);
   return (
-    <div data-testid="node-run" data-run-status={status} className="space-y-2 rounded-md border bg-app p-3">
+    <div data-testid="node-run" data-run-status={status} className="space-y-2 rounded-md border border-navy-100 bg-navy-50/60 p-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold uppercase text-muted-strong">{run.source === 'test' ? 'Last test' : `Run #${run.id}`}</span>
         <NodeRunIcon status={status} />

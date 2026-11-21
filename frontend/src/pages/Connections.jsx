@@ -59,7 +59,7 @@ export default function Connections() {
         {!items.length ? (
           <Empty>No connections yet.</Empty>
         ) : (
-          <div className="divide-y rounded-lg border bg-surface shadow-card">
+          <div className="glass divide-y divide-line/80 rounded-lg border shadow-card">
             {items.map((c) => (
               <div key={c.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                 <div className="rounded-md bg-brand-50 p-2"><Plug className="h-4 w-4 text-brand-700" /></div>

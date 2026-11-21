@@ -75,7 +75,7 @@ function StepNode({ id, data, type, selected }) {
       data-problems={problems ? problems.errors.length : undefined}
       title={tip}
       className={cx(
-        'relative w-56 rounded-lg border-2 bg-surface px-3 py-2 shadow-card',
+        'glass relative w-56 rounded-lg border-2 px-3 py-2 shadow-card transition-shadow duration-150 hover:shadow-lift',
         runStyle ? runStyle.card : problems?.errors.length ? 'border-red-400 ring-2 ring-red-100' : problems ? 'border-amber-400' : selected ? m.style?.border : 'border-line',
         selected && (runStyle || problems) && 'outline outline-2 outline-offset-2 outline-brand-600',
       )}
@@ -126,9 +126,9 @@ function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
       <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ ...style, strokeWidth: selected ? 2.5 : 1.5, stroke: selected ? 'rgb(var(--brand-600))' : 'rgb(var(--navy-300))' }} />
       <EdgeLabelRenderer>
         <div style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, pointerEvents: 'all' }} className="nodrag nopan flex items-center gap-1">
-          {label && <span className="rounded bg-surface px-1 text-[10px] font-medium text-muted-strong shadow-sm">{label}</span>}
+          {label && <span className="rounded bg-white/95 px-1.5 text-[10px] font-medium text-muted-strong shadow-sm ring-1 ring-navy-100">{label}</span>}
           {selected && data?.onDelete && (
-            <button type="button" title="Remove this connection" aria-label="Remove this connection" onClick={() => data.onDelete(id)} className="rounded-full border bg-surface p-0.5 text-muted-strong shadow hover:text-red-600">
+            <button type="button" title="Remove this connection" aria-label="Remove this connection" onClick={() => data.onDelete(id)} className="rounded-full border bg-white p-0.5 text-muted-strong shadow hover:text-red-600">
               <X className="h-3 w-3" />
             </button>
           )}
@@ -654,13 +654,13 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b bg-surface px-4 py-2.5">
+      <div className="glass-subtle relative z-10 flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
         <Button variant="ghost" icon={ArrowLeft} onClick={() => { if (!dirty || confirm('Leave without saving?')) { setDirty(false); onBack(); } }}>Back</Button>
         <Input className="max-w-xs font-medium" value={name} disabled={!editable} maxLength={200} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
         {versions.length > 1 ? (
           <select
             aria-label="Version"
-            className="rounded-md border px-2 py-1 text-xs"
+            className="rounded-md border border-navy-100 bg-white/90 px-2 py-1 text-xs focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/20"
             value={current?.id}
             onChange={(e) => {
               const v = versions.find((x) => x.id === Number(e.target.value));
@@ -702,7 +702,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
         </div>
       </div>
       {published && editable && !newerDraft && (
-        <div className="flex flex-wrap items-center gap-2 border-b bg-slate-50 px-4 py-2 text-sm text-slate-700" data-testid="published-banner">
+        <div className="flex flex-wrap items-center gap-2 border-b bg-slate-50/95 px-4 py-2 text-sm text-slate-700" data-testid="published-banner">
           <Lock className="h-4 w-4 text-slate-500" />
           Version {current.version} was published{current.published_at ? ` on ${formatDate(current.published_at)}` : ''} and is read-only: it always runs exactly as published.
           {dirty ? ' Saving your changes starts a new draft.' : ' Changes you make are saved as a new draft.'}
@@ -722,7 +722,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
         </div>
       )}
       {notice && (
-        <div className="flex items-start gap-2 border-b bg-surface px-4 py-2">
+        <div className="glass-strong flex items-start gap-2 border-b px-4 py-2">
           <div className="flex-1"><Alert kind={notice.kind}>{notice.text}</Alert></div>
           <button onClick={() => setNotice(null)} className="p-1 text-muted hover:text-ink" aria-label="Dismiss"><X className="h-4 w-4" /></button>
         </div>
@@ -730,12 +730,12 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
 
       <div className="flex min-h-0 flex-1">
         {editable && (
-          <div className="flex w-60 flex-shrink-0 flex-col border-r bg-surface">
+          <div className="glass relative z-[5] flex w-60 flex-shrink-0 flex-col border-r">
             <div className="p-3 pb-2">
               <div className="mb-2 text-xs font-semibold uppercase text-muted-strong">Add a step</div>
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-4 w-4 text-muted" />
-                <input className="w-full rounded-md border py-1.5 pl-7 pr-2 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20" placeholder="Search steps" value={paletteQuery} onChange={(e) => setPaletteQuery(e.target.value)} />
+                <input className="w-full rounded-md border border-navy-100 bg-white/90 py-1.5 pl-7 pr-2 text-sm placeholder:text-muted focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/20" placeholder="Search steps" value={paletteQuery} onChange={(e) => setPaletteQuery(e.target.value)} />
               </div>
               <p className="mt-2 text-xs text-muted-strong">New steps go {anchorHint}.</p>
             </div>
@@ -750,7 +750,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
                     <div className={cx('mb-1 text-[11px] font-semibold uppercase', st.text)}>{cat === 'Flow' ? 'Logic & flow' : cat}</div>
                     {[...logic.map((l) => ({ ...l, onClick: () => addStep(l.type), Icon: l.icon, key: l.type })),
                       ...items.map((n) => ({ ...n, onClick: () => addStep('action', n.key), Icon: iconFor(n.icon) }))].map((it) => (
-                      <button key={it.key} onClick={it.onClick} title={it.description} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-brand-50">
+                      <button key={it.key} onClick={it.onClick} title={it.description} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-white/90 hover:shadow-sm">
                         <span className={cx('rounded p-1', st.bg)}><it.Icon className={cx('h-3.5 w-3.5', st.text)} /></span>
                         <span className="truncate">{it.name}</span>
                       </button>
@@ -792,14 +792,15 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
             deleteKeyCode={null}
             fitView
             fitViewOptions={{ maxZoom: 1 }}
+            className="glass-canvas"
           >
             <Background />
             <Controls showInteractive={false} />
           </ReactFlow>
         </div>
 
-        <div className="flex w-96 flex-shrink-0 flex-col border-l bg-surface">
-          <div className="flex border-b px-2" role="tablist" aria-label="Side panel">
+        <div className="glass-strong relative z-[5] flex w-96 flex-shrink-0 flex-col border-l">
+          <div className="flex border-b border-line/80 px-2" role="tablist" aria-label="Side panel">
             {[
               ['settings', selected ? 'Step' : 'Workflow'],
               ...(run ? [['run', 'Run']] : []),
@@ -812,7 +813,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
                 role="tab"
                 aria-selected={tab === key}
                 onClick={() => setTab(key)}
-                className={cx('-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium', tab === key ? 'border-brand-600 text-brand-700' : 'border-transparent text-muted-strong hover:text-ink')}
+                className={cx('-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors duration-150', tab === key ? 'border-brand-600 text-brand-700' : 'border-transparent text-muted-strong hover:text-ink')}
               >
                 {key === 'run' && run && (runActive ? <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" /> : <NodeRunIcon status={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'failed' : 'cancelled'} className="h-3.5 w-3.5" />)}
                 {label}
@@ -994,7 +995,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
         <div className="text-xs font-semibold uppercase text-muted-strong">Form fields</div>
         {!fields.length && <p className="text-xs text-muted-strong">No fields yet. Add some so people can give the workflow information.</p>}
         {fields.map((f, i) => (
-          <div key={i} className="space-y-1.5 rounded-md border bg-app p-2">
+          <div key={i} className="space-y-1.5 rounded-md border bg-navy-50/60 p-2">
             <div className="flex gap-1">
               <Input placeholder="Label" value={f.label} maxLength={100} onChange={(e) => {
                 const label = e.target.value;

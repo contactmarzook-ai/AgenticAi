@@ -5,7 +5,7 @@ import { Button, PageHeader, Select, Table } from '../lib/ui';
 
 function Stat({ label, value, sub }) {
   return (
-    <div className="rounded-lg border bg-surface p-4 shadow-card">
+    <div className="glass rounded-lg border p-4 shadow-card">
       <div className="text-xs font-medium uppercase tracking-wide text-muted-strong">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-navy">{value}</div>
       {sub && <div className="text-xs text-muted-strong">{sub}</div>}

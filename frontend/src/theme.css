@@ -58,4 +58,33 @@
   --muted: 113 128 150;      /* #718096 */
   --muted-strong: 85 99 120; /* #556378 */
   --line: 226 232 240;       /* #E2E8F0 */
+
+  /* ---- Glass (frosted surfaces) ----------------------------------------------------
+   * Defined once here and used through the .glass* classes in index.css.
+   * Alphas are chosen for contrast on the real composited colour, not for looks:
+   *   glass        0.80 white  content panels and cards (muted-strong text >= 4.9:1 on the
+   *                            darkest backdrop area that sits under main content)
+   *   glass-strong 0.92 white  modals, menus, popovers, tables, form fields
+   *   glass-subtle 0.70 white  thin chrome only (page/toolbar strips with navy titles)
+   *   glass-dark   navy-900 @ 0.88  sidebar (white text >= 12:1, navy-200 text >= 6:1)
+   * Browsers without backdrop-filter, and users who ask for reduced transparency,
+   * get solid surfaces instead (see index.css). */
+  --glass-tint: 255 255 255;
+  --glass-alpha: 0.8;
+  --glass-strong-alpha: 0.92;
+  --glass-subtle-alpha: 0.7;
+  --glass-dark-tint: 13 34 59;
+  --glass-dark-alpha: 0.88;
+  --glass-border: 255 255 255;
+  --glass-border-alpha: 0.65;
+  --glass-blur: 18px;
+  --glass-saturate: 160%;
+
+  /* Radii: panels 14px (rounded-lg), controls 10px (rounded-md), hero cards 18px (rounded-xl). */
+  --radius-control: 10px;
+  --radius-panel: 14px;
+  --radius-hero: 18px;
+
+  /* App backdrop (static): light base, deep navy -> brand blue glows, a faint accent glow. */
+  --backdrop-base: 228 236 245;  /* #E4ECF5 */
 }

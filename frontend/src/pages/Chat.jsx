@@ -77,7 +77,7 @@ export default function Chat() {
 
   return (
     <div className="flex h-full">
-      <div className="flex w-64 flex-shrink-0 flex-col border-r bg-surface">
+      <div className="glass flex w-64 flex-shrink-0 flex-col border-r">
         <div className="p-3">
           <Button icon={Plus} className="w-full" onClick={() => openSession(null)}>
             New chat
@@ -89,8 +89,8 @@ export default function Chat() {
               key={s.id}
               onClick={() => openSession(s)}
               className={cx(
-                'group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-2 text-sm',
-                active?.id === s.id ? 'bg-brand-50 font-medium text-brand-700' : 'text-muted-strong hover:bg-brand-50',
+                'group flex cursor-pointer items-center justify-between rounded-md px-2.5 py-2 text-sm transition-colors duration-150',
+                active?.id === s.id ? 'bg-brand-50 font-medium text-brand-700 ring-1 ring-inset ring-brand-100' : 'text-muted-strong hover:bg-white/80 hover:text-ink',
               )}
             >
               <span className="truncate">{s.title}</span>
@@ -103,7 +103,7 @@ export default function Chat() {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b bg-surface px-6 py-3">
+        <div className="glass-subtle relative z-10 flex items-center gap-3 border-b px-6 py-3">
           {active ? (
             <>
               <h1 className="truncate font-medium text-navy">{active.title}</h1>
@@ -127,17 +127,17 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="mx-auto max-w-3xl space-y-5">
             {!messages.length && !sending && (
-              <div className="py-16 text-center text-muted-strong">
+              <div className="glass mx-auto mt-10 max-w-md rounded-xl border px-6 py-10 text-center text-muted-strong shadow-card">
                 <Bot className="mx-auto mb-3 h-10 w-10 text-muted/60" />
                 <p>Ask a question. Requests are routed to the agent or workflow that fits, or answered directly.</p>
               </div>
             )}
             {messages.map((m) => (
               <div key={m.id} className={cx('flex gap-3', m.role === 'user' && 'flex-row-reverse')}>
-                <div className={cx('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full', m.role === 'user' ? 'bg-navy-50' : 'bg-brand-100')}>
+                <div className={cx('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full', m.role === 'user' ? 'bg-white/90 ring-1 ring-navy-100' : 'bg-brand-100 ring-1 ring-white/70')}>
                   {m.role === 'user' ? <UserIcon className="h-4 w-4 text-muted-strong" /> : <Bot className="h-4 w-4 text-brand-600" />}
                 </div>
-                <div className={cx('max-w-[80%] rounded-lg px-4 py-2.5 text-sm', m.role === 'user' ? 'bg-brand-600 text-white' : 'border bg-surface text-ink')}>
+                <div className={cx('max-w-[80%] rounded-lg px-4 py-2.5 text-sm', m.role === 'user' ? 'btn-primary-glass bg-brand-600 text-white shadow-glow' : 'glass-strong border text-ink shadow-card')}>
                   <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   {m.role === 'assistant' && m.metadata_json && (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t pt-2 text-xs text-muted-strong">
@@ -159,7 +159,7 @@ export default function Chat() {
               </div>
             ))}
             {sending && (
-              <div className="flex items-center gap-2 text-sm text-muted-strong">
+              <div className="glass flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-sm text-muted-strong shadow-card">
                 <Loader2 className="h-4 w-4 animate-spin" /> Working…
               </div>
             )}
@@ -167,7 +167,7 @@ export default function Chat() {
           </div>
         </div>
 
-        <form onSubmit={send} className="border-t bg-surface px-6 py-4">
+        <form onSubmit={send} className="glass-subtle border-t px-6 py-4">
           <div className="mx-auto max-w-3xl space-y-2">
             <Alert>{error}</Alert>
             <div className="flex gap-2">
@@ -180,7 +180,7 @@ export default function Chat() {
                 rows={1}
                 maxLength={8000}
                 placeholder="Message…  (Shift+Enter for a new line)"
-                className="flex-1 resize-none rounded-md border border-line px-3 py-2 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+                className="flex-1 resize-none rounded-md border border-navy-100 bg-white/90 px-3 py-2 text-sm transition-[border-color,box-shadow] duration-150 placeholder:text-muted focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/20"
               />
               <Button type="submit" icon={Send} loading={sending} disabled={!input.trim()}>
                 Send

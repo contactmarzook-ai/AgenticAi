@@ -5,10 +5,10 @@ const isPlain = (v) => v === null || ['string', 'number', 'boolean'].includes(ty
 /** Friendly display of a workflow's result: text as text, flat objects as a labelled list. */
 export function ResultView({ value }) {
   if (value === undefined || value === null || value === '') return <p className="text-sm text-muted-strong">No result.</p>;
-  if (isPlain(value)) return <div className="whitespace-pre-wrap rounded-md border bg-app p-4 text-sm">{String(value)}</div>;
+  if (isPlain(value)) return <div className="whitespace-pre-wrap rounded-md border bg-navy-50/60 p-4 text-sm">{String(value)}</div>;
   if (!Array.isArray(value) && Object.values(value).every(isPlain)) {
     return (
-      <dl className="divide-y rounded-md border bg-app text-sm">
+      <dl className="divide-y rounded-md border bg-navy-50/60 text-sm">
         {Object.entries(value).map(([k, v]) => (
           <div key={k} className="grid grid-cols-3 gap-3 px-4 py-2">
             <dt className="font-medium text-muted-strong">{k.replace(/_/g, ' ')}</dt>

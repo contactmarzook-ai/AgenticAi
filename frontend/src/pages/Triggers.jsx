@@ -131,7 +131,7 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
         })}
 
         {form ? (
-          <div className="space-y-3 rounded-md border bg-app p-4">
+          <div className="space-y-3 rounded-md border bg-navy-50/60 p-4">
             <div className="flex items-center gap-2 font-medium text-ink">
               {(() => { const I = KINDS[form.type].icon; return <I className="h-4 w-4" />; })()} {KINDS[form.type].label}
             </div>

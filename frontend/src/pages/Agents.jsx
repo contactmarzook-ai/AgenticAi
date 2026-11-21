@@ -78,7 +78,7 @@ export default function Agents({ user }) {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {agents.map((a) => (
-              <div key={a.id} className="flex flex-col rounded-lg border bg-surface p-4 shadow-card">
+              <div key={a.id} className="glass glass-hover flex flex-col rounded-lg border p-4 shadow-card">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <div className="rounded-md bg-brand-50 p-1.5">
@@ -106,7 +106,7 @@ export default function Agents({ user }) {
                 </p>
                 <div className="mb-3 flex flex-wrap gap-1">
                   {a.tools.map((t) => (
-                    <span key={t} className="inline-flex items-center gap-1 rounded bg-app px-1.5 ring-1 ring-inset ring-line py-0.5 font-mono text-xs text-muted-strong">
+                    <span key={t} className="inline-flex items-center gap-1 rounded bg-navy-50/60 px-1.5 ring-1 ring-inset ring-line py-0.5 font-mono text-xs text-muted-strong">
                       <Wrench className="h-3 w-3" />
                       {t}
                     </span>
@@ -374,7 +374,7 @@ function TryAgent({ agent, onClose }) {
         {inputCheck && <ValidationResult title="Input validation" check={inputCheck} />}
         {run && (
           <>
-            <section className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-app px-3 py-2 text-sm">
+            <section className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-navy-50/60 px-3 py-2 text-sm">
               <span className="font-medium text-navy">Execution</span>
               <Badge color={run.status === 'succeeded' ? 'green' : 'red'}>{run.status}</Badge>
               {duration != null && <span className="text-muted-strong">{(duration / 1000).toFixed(2)} s</span>}

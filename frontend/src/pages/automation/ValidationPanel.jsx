@@ -31,7 +31,7 @@ export default function ValidationPanel({ validation, nodes, onSelectNode }) {
   };
 
   return (
-    <div data-testid="validation-panel" data-errors={errors.length} data-warnings={warnings.length} className={cx('pointer-events-auto max-w-full rounded-lg border bg-surface/95 shadow-card backdrop-blur', open && total > 0 && 'w-96')}>
+    <div data-testid="validation-panel" data-errors={errors.length} data-warnings={warnings.length} className={cx('glass-strong pointer-events-auto max-w-full rounded-lg border shadow-lift', open && total > 0 && 'w-96')}>
       <button
         type="button"
         onClick={() => total && setOpen(!open)}
