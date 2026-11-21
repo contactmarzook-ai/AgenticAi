@@ -150,7 +150,8 @@ export default function Automations({ user }) {
           user={user}
           onSaved={load}
           onBack={() => { window.history.replaceState(null, '', '#/workflows'); setOpen(undefined); load(); }}
-          onOpenVersion={(v) => setOpen({ workflow: v })}
+          onOpenVersion={(v, extra) => setOpen({ workflow: v, runId: extra?.runId })}
+          initialRunId={open.runId}
         />
       </Suspense>
     );

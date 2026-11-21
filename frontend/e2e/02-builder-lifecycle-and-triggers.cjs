@@ -61,8 +61,7 @@ const check = (cond, msg) => { if (!cond) throw new Error('CHECK FAILED: ' + msg
   await page.click('button:has-text("Test")');
   await dlg.locator('input').first().fill('sales');
   await dlg.locator('button:has-text("Run test")').click();
-  await dlg.getByText('Succeeded', { exact: true }).waitFor();
-  await dlg.locator('button:has-text("Show on canvas")').click();
+  await page.locator('[data-testid=run-status][data-status=succeeded]').waitFor();
   // publish: the renamed path must not break validation
   await page.click('button:has-text("Publish")');
   await page.waitForSelector('text=is now live');
@@ -85,6 +84,7 @@ const check = (cond, msg) => { if (!cond) throw new Error('CHECK FAILED: ' + msg
 
   // unsaved guard on navigation
   await page.click('.react-flow__pane', { position: { x: 30, y: 30 } });
+  await page.click('[role=tab]:has-text("Workflow")');
   await page.locator('label:has-text("Description") textarea').fill('changed');
   await page.click('nav >> text=History');
   check(dialogs.some(d => d.includes('unsaved')), 'leaving with unsaved changes asks first');

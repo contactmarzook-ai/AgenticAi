@@ -5,18 +5,23 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  ArrowLeft, CheckCircle2, CircleCheck, CircleDashed, CircleX, Clock, Flag, FlaskConical, GitBranch, Play, Plus, Power,
-  Redo2, Repeat, Rocket, Save, Search, Split, Trash2, Undo2, X,
+  ArrowLeft, CircleAlert, Clock, Flag, FlaskConical, GitBranch, Lock, Play, Plus, Power, Redo2, Repeat, Rocket, Save, Search,
+  Split, Trash2, TriangleAlert, Undo2, X,
 } from 'lucide-react';
 import api, { errorMessage } from '../../lib/api';
 import { can } from '../../lib/auth';
 import { CATEGORY_STYLE, iconFor } from '../../lib/icons';
 import { useUnsaved } from '../../lib/unsaved';
-import { Alert, Button, Checkbox, Field, Input, Modal, Select, StatusBadge, Textarea, cx } from '../../lib/ui';
-import RunSteps, { ResultView } from '../RunSteps';
+import { Alert, Button, Checkbox, Field, Input, Select, StatusBadge, Textarea, cx, formatDate } from '../../lib/ui';
 import Triggers from '../Triggers';
-import RunForm, { missingRequired } from './RunForm';
-import StepForm, { VarText, availableVariables } from './StepForm';
+import {
+  NODE_RUN_STYLE, displayStatus, isActive, nodeStates, problemsByNode, useLiveValidation, useRunPolling,
+} from './execution';
+import RunHistory from './RunHistory';
+import RunPanel, { NodeRunDetails, NodeRunIcon, RunBar, StartRunDialog } from './RunPanel';
+import StepForm, { VarText, availableVariables, outputKeys } from './StepForm';
+import ValidationPanel from './ValidationPanel';
+import VersionsPanel from './VersionsPanel';
 
 const OPERATORS = [
   ['==', 'is equal to'], ['!=', 'is not equal to'], ['>', 'is greater than'], ['<', 'is less than'],
@@ -30,8 +35,6 @@ const LOGIC = [
   { type: 'end', name: 'Finish', description: 'End of a path; choose what the workflow returns.', icon: Flag },
 ];
 const BRANCHING = ['condition', 'switch'];
-const STATUS_ICON = { success: CircleCheck, failed: CircleX, error_continued: CircleX, skipped: CircleDashed };
-const STATUS_COLOR = { success: 'text-green-600', failed: 'text-red-600', error_continued: 'text-amber-600', skipped: 'text-muted-strong' };
 const FORM_TYPES = [['text', 'Short text'], ['textarea', 'Long text'], ['number', 'Number'], ['email', 'Email'], ['date', 'Date'], ['select', 'Choice'], ['boolean', 'Yes / no']];
 
 function meta(node, catalog) {
@@ -53,7 +56,12 @@ function handlesOf(node) {
 function StepNode({ id, data, type, selected }) {
   const m = data._meta || {};
   const Icon = m.icon || Play;
-  const StatusIcon = STATUS_ICON[data._status];
+  const run = data._run;
+  const problems = !run && data._problems;
+  const runStyle = run ? NODE_RUN_STYLE[run.status] : null;
+  const tip = run
+    ? `${NODE_RUN_STYLE[run.status]?.label || run.status}${run.attempts > 1 ? ` after ${run.attempts} attempts` : ''}${run.error ? `: ${run.error}` : ''}`
+    : problems ? [...problems.errors, ...problems.warnings].join('\n') : undefined;
   const cases = type === 'switch' ? [...(data.cases || []).filter((c) => String(c).trim()), 'default'] : [];
   // Switch handles change with the path names: tell React Flow so connections are redrawn.
   const updateInternals = useUpdateNodeInternals();
@@ -62,7 +70,16 @@ function StepNode({ id, data, type, selected }) {
     if (type === 'switch') updateInternals(id);
   }, [handleKey, id, type, updateInternals]);
   return (
-    <div className={cx('w-56 rounded-lg border-2 bg-surface px-3 py-2 shadow-card', selected ? m.style?.border : 'border-line')}>
+    <div
+      data-run-status={run?.status}
+      data-problems={problems ? problems.errors.length : undefined}
+      title={tip}
+      className={cx(
+        'relative w-56 rounded-lg border-2 bg-surface px-3 py-2 shadow-card',
+        runStyle ? runStyle.card : problems?.errors.length ? 'border-red-400 ring-2 ring-red-100' : problems ? 'border-amber-400' : selected ? m.style?.border : 'border-line',
+        selected && (runStyle || problems) && 'outline outline-2 outline-offset-2 outline-brand-600',
+      )}
+    >
       {type !== 'input' && <Handle type="target" position={Position.Top} />}
       <div className="flex items-center gap-2">
         <div className={cx('rounded-md p-1.5', m.style?.bg)}>
@@ -72,8 +89,14 @@ function StepNode({ id, data, type, selected }) {
           <div className={cx('truncate text-[10px] font-semibold uppercase tracking-wide', m.style?.text)}>{m.title}</div>
           <div className="truncate text-sm text-ink">{data.label || m.title}</div>
         </div>
-        {StatusIcon && <StatusIcon className={cx('h-4 w-4 flex-shrink-0', STATUS_COLOR[data._status])} />}
+        {run && <NodeRunIcon status={run.status} />}
+        {problems && (problems.errors.length ? <CircleAlert className="h-4 w-4 flex-shrink-0 text-red-600" aria-label="Has problems" /> : <TriangleAlert className="h-4 w-4 flex-shrink-0 text-amber-600" aria-label="Has warnings" />)}
       </div>
+      {run?.attempts > 1 && (
+        <span className="absolute -right-2 -top-2 rounded-full border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-800" title={`${run.attempts} attempts`}>
+          ×{run.attempts}
+        </span>
+      )}
       {type === 'condition' && (
         <>
           <Handle type="source" position={Position.Bottom} id="true" style={{ left: '28%', background: '#16a34a' }} />
@@ -154,7 +177,7 @@ function renameRefs(value, from, to) {
 
 const draftKey = (userId, id) => `agentos.unsaved.${userId}.${id ?? 'new'}`;
 
-export default function FlowBuilder({ workflow, draft, catalog, credentialTypes, agents, user, onBack, onSaved, onOpenVersion }) {
+export default function FlowBuilder({ workflow, draft, catalog, credentialTypes, agents, user, onBack, onSaved, onOpenVersion, initialRunId }) {
   const initial = draft?.definition || (workflow?.definition?.nodes?.length ? workflow.definition : blank());
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges.map((e) => ({ ...e, type: 'step', label: e.label || edgeLabel(e.sourceHandle) })));
@@ -171,9 +194,12 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   const [notice, setNotice] = useState(draft?.warnings?.length ? { kind: 'info', text: `Drafted by AI. Still to do: ${draft.warnings.join(' • ')}` } : null);
   const [busy, setBusy] = useState('');
   const [dirty, setDirtyState] = useState(!!draft);
-  const [testOpen, setTestOpen] = useState(false);
+  const [startDialog, setStartDialog] = useState(null); // { mode: 'test'|'run', workflow, fields }
   const [triggersOpen, setTriggersOpen] = useState(false);
-  const [lastRun, setLastRun] = useState(null);
+  const [run, setRun] = useState(null); // the run shown in the Run tab and on the canvas
+  const [runBusy, setRunBusy] = useState(''); // 'cancel' | 'rerun'
+  const [tab, setTab] = useState('settings'); // right pane: settings | run | history | versions
+  const [versionInfo, setVersionInfo] = useState(null); // version history with run counts
   const [paletteQuery, setPaletteQuery] = useState('');
   const [restore, setRestore] = useState(null);
   const [history, setHistory] = useState({ undo: [], redo: [] });
@@ -186,7 +212,18 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   const live = versions.find((v) => v.status === 'active');
   const selected = nodes.find((n) => n.id === selectedId);
   const startNode = nodes.find((n) => n.type === 'input');
-  const stepResults = useMemo(() => Object.fromEntries((lastRun?.steps || []).map((s) => [s.node_id, s])), [lastRun]);
+  const published = !!current?.published_at && current.status !== 'draft';
+
+  // ---------- live validation & the shown run ----------
+  const definition = useMemo(() => ({ ...clean(nodes, edges), settings: flowSettings }), [nodes, edges, flowSettings]);
+  const validation = useLiveValidation(definition, current?.id, editable && can(user, 'workflow:write'));
+  const problems = useMemo(() => problemsByNode(validation, nodes), [validation, nodes]);
+  useRunPolling(run, setRun);
+  const runActive = isActive(run);
+  const overlayRun = run && current && run.target_type === 'workflow' && run.target_id === current.id ? run : null;
+  const runStates = useMemo(() => nodeStates(run), [run]);
+  const overlayStates = useMemo(() => (overlayRun ? runStates : {}), [overlayRun, runStates]);
+  const versionOf = (targetId) => versionInfo?.find((v) => v.id === targetId)?.version ?? versions.find((v) => v.id === targetId)?.version ?? null;
 
   const setDirty = useCallback((v) => {
     setDirtyState(v);
@@ -195,11 +232,22 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
 
   // ---------- versions, unsaved-work protection ----------
   const loadVersions = useCallback((groupId) => {
-    if (groupId) api.get('/workflows', { params: { group_id: groupId } }).then((r) => setVersions(r.data)).catch(() => {});
+    if (!groupId) return;
+    api.get('/workflows', { params: { group_id: groupId } }).then((r) => setVersions(r.data)).catch(() => {});
+    api.get(`/workflows/groups/${groupId}/versions`).then((r) => setVersionInfo(r.data)).catch(() => {});
   }, []);
+  // Also refreshed when a run finishes (run counts per version).
+  const finishedRun = run && !runActive ? run.id : null;
   useEffect(() => {
     loadVersions(current?.group_id);
-  }, [current?.group_id, current?.status, loadVersions]);
+  }, [current?.group_id, current?.status, finishedRun, loadVersions]);
+
+  // Opened from the history of another version: show that run straight away.
+  useEffect(() => {
+    if (initialRunId) {
+      api.get(`/runs/${initialRunId}`).then((r) => { setRun(r.data); setTab('run'); }).catch(() => {});
+    }
+  }, [initialRunId]);
 
   useEffect(() => {
     if (current?.id) window.history.replaceState(null, '', `#/workflows/${current.id}`);
@@ -284,8 +332,12 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
   }, [snapshot, setDirty, setEdges]);
 
   const viewNodes = useMemo(
-    () => nodes.map((n) => ({ ...n, deletable: false, data: { ...n.data, _meta: meta(n, catalog), _status: stepResults[n.id]?.status } })),
-    [nodes, catalog, stepResults],
+    () => nodes.map((n) => {
+      const st = overlayStates[n.id];
+      const _run = st ? { status: displayStatus(st), attempts: st.attempts, error: st.error } : null;
+      return { ...n, deletable: false, data: { ...n.data, _meta: meta(n, catalog), _run, _problems: problems[n.id] } };
+    }),
+    [nodes, catalog, overlayStates, problems],
   );
   const viewEdges = useMemo(() => edges.map((e) => ({ ...e, type: 'step', deletable: false, data: { onDelete: editable ? removeEdge : null } })), [edges, editable, removeEdge]);
 
@@ -507,7 +559,72 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
 
   const openTest = async () => {
     const wf = await ensureSaved();
-    if (wf) setTestOpen(true);
+    if (wf) setStartDialog({ mode: 'test', workflow: wf, fields: startNode?.data?.fields || [] });
+  };
+
+  const showRun = (r) => {
+    setRun(r);
+    setTab('run');
+  };
+
+  const cancelRun = async () => {
+    setRunBusy('cancel');
+    try {
+      setRun((await api.post(`/runs/${run.id}/cancel`)).data);
+    } catch (err) {
+      if (err.response?.status === 409) setRun((await api.get(`/runs/${run.id}`)).data);
+      else setNotice({ kind: 'error', text: errorMessage(err) });
+    } finally {
+      setRunBusy('');
+    }
+  };
+
+  const rerun = async () => {
+    setRunBusy('rerun');
+    try {
+      showRun((await api.post(`/runs/${run.id}/rerun`)).data);
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorMessage(err) });
+    } finally {
+      setRunBusy('');
+    }
+  };
+
+  const openRunFromHistory = async (summary) => {
+    try {
+      showRun((await api.get(`/runs/${summary.id}`)).data);
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorMessage(err) });
+    }
+  };
+
+  /** Open another version (asks first when there are unsaved changes), optionally showing one of its runs. */
+  const openVersionById = async (id, runId) => {
+    if (dirty && !confirm('Open another version without saving?')) return;
+    try {
+      const wf = (await api.get(`/workflows/${id}`)).data;
+      setDirty(false);
+      onOpenVersion?.(wf, runId ? { runId } : undefined);
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorMessage(err) });
+    }
+  };
+
+  const runVersion = async (v) => {
+    try {
+      const wf = v.id === current?.id ? current : (await api.get(`/workflows/${v.id}`)).data;
+      const fields = v.id === current?.id ? startNode?.data?.fields || [] : (wf.definition?.nodes || []).find((n) => n.type === 'input')?.data?.fields || [];
+      setStartDialog({ mode: 'run', workflow: wf, fields });
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorMessage(err) });
+    }
+  };
+
+  const selectNode = (id) => {
+    if (!id || !nodes.some((n) => n.id === id)) return;
+    setSelectedId(id);
+    setTab('settings');
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === id })));
   };
 
   const doRestore = () => {
@@ -550,20 +667,30 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
               if (v && (!dirty || confirm('Open another version without saving?'))) { setDirty(false); onOpenVersion?.(v); }
             }}
           >
-            {versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {v.status === 'active' ? 'live' : v.status === 'archived' ? 'old' : 'draft'}</option>)}
+            {versions.map((v) => {
+              const info = versionInfo?.find((x) => x.id === v.id);
+              const runs = Object.values(info?.runs || {}).reduce((a, n) => a + n, 0);
+              const state = v.status === 'active' ? 'live' : v.status === 'draft' ? 'draft' : v.published_at ? 'published earlier' : 'old';
+              return <option key={v.id} value={v.id}>v{v.version} · {state}{info ? ` · ${runs} ${runs === 1 ? 'run' : 'runs'}` : ''}</option>;
+            })}
           </select>
         ) : (
           current && <span className="text-xs text-muted-strong">v{current.version}</span>
         )}
         <StatusBadge status={statusLabel} />
-        {dirty && <span className="text-xs text-amber-600">unsaved changes</span>}
+        {published && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-strong" title="Published versions cannot be changed. Saving starts a new draft.">
+            <Lock className="h-3.5 w-3.5" /> read-only
+          </span>
+        )}
+        {dirty && <span className="text-xs text-amber-700">unsaved changes</span>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {editable && (
             <>
               <button title="Undo (Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!history.undo.length} className="rounded p-1.5 text-muted-strong hover:bg-brand-50 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
               <button title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={redo} disabled={!history.redo.length} className="rounded p-1.5 text-muted-strong hover:bg-brand-50 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
               <Button variant="secondary" icon={Save} loading={busy === 'save'} onClick={save}>Save</Button>
-              <Button variant="secondary" icon={FlaskConical} onClick={openTest}>Test</Button>
+              <Button variant="secondary" icon={FlaskConical} onClick={openTest} disabled={runActive || busy === 'save'} title={runActive ? 'A run is in progress' : 'Run your current version with test input'}>Test</Button>
             </>
           )}
           {current && editable && can(user, 'trigger:write') && <Button variant="secondary" icon={Clock} onClick={() => setTriggersOpen(true)}>How it starts</Button>}
@@ -574,6 +701,13 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
           )}
         </div>
       </div>
+      {published && editable && !newerDraft && (
+        <div className="flex flex-wrap items-center gap-2 border-b bg-slate-50 px-4 py-2 text-sm text-slate-700" data-testid="published-banner">
+          <Lock className="h-4 w-4 text-slate-500" />
+          Version {current.version} was published{current.published_at ? ` on ${formatDate(current.published_at)}` : ''} and is read-only: it always runs exactly as published.
+          {dirty ? ' Saving your changes starts a new draft.' : ' Changes you make are saved as a new draft.'}
+        </div>
+      )}
       {newerDraft && (
         <div className="flex flex-wrap items-center gap-2 border-b bg-brand-50 px-4 py-2 text-sm text-brand-800">
           You are looking at version {current.version}. There is a newer draft (version {newerDraft.version}); saving here would start yet another draft.
@@ -628,7 +762,20 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
           </div>
         )}
 
-        <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
+          <div className="pointer-events-none absolute right-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2">
+            {run && (
+              <RunBar
+                run={run}
+                otherVersion={!overlayRun}
+                cancelling={runBusy === 'cancel'}
+                onCancel={cancelRun}
+                onClear={() => { setRun(null); if (tab === 'run') setTab('settings'); }}
+                onShowDetails={() => setTab('run')}
+              />
+            )}
+            <ValidationPanel validation={validation} nodes={nodes} onSelectNode={selectNode} />
+          </div>
           <ReactFlow
             nodes={viewNodes}
             edges={viewEdges}
@@ -638,7 +785,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
             onEdgesChange={editable ? onEdgesChangeSafe : undefined}
             onConnect={editable ? onConnect : undefined}
             onNodeDragStart={() => editable && snapshot()}
-            onNodeClick={(_, n) => setSelectedId(n.id)}
+            onNodeClick={(_, n) => { setSelectedId(n.id); setTab('settings'); }}
             onPaneClick={() => setSelectedId(null)}
             nodesDraggable={editable}
             nodesConnectable={editable}
@@ -651,54 +798,126 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
           </ReactFlow>
         </div>
 
-        <div className="w-96 flex-shrink-0 overflow-y-auto border-l bg-surface p-4">
-          {selected ? (
-            <fieldset disabled={!editable} className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-navy">{meta(selected, catalog).title}</h3>
-                {editable && selected.type !== 'input' && <Button variant="danger" icon={Trash2} onClick={() => removeNode(selected.id)}>Remove</Button>}
-              </div>
-              {selected.type === 'action' && <p className="-mt-2 text-sm text-muted-strong">{catalog.find((n) => n.key === selected.data?.action)?.description}</p>}
-              <Field label="Name of this step">
-                <Input value={selected.data?.label || ''} maxLength={120} onChange={(e) => updateData(selected.id, { label: e.target.value })} />
-              </Field>
-              <NodeSettings
-                node={selected}
-                catalog={catalog}
-                groups={groups}
-                agents={agents}
-                credentialTypes={credentialTypes}
-                onChange={(patch) => updateData(selected.id, patch)}
-                onTriggers={current && editable ? () => setTriggersOpen(true) : null}
-                onRenameCase={(from, to) => renameCase(selected.id, from, to)}
-                onDropCase={(v) => dropCase(selected.id, v)}
-                onRenameField={renameField}
+        <div className="flex w-96 flex-shrink-0 flex-col border-l bg-surface">
+          <div className="flex border-b px-2" role="tablist" aria-label="Side panel">
+            {[
+              ['settings', selected ? 'Step' : 'Workflow'],
+              ...(run ? [['run', 'Run']] : []),
+              ['history', 'History'],
+              ['versions', 'Versions'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={cx('-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium', tab === key ? 'border-brand-600 text-brand-700' : 'border-transparent text-muted-strong hover:text-ink')}
+              >
+                {key === 'run' && run && (runActive ? <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" /> : <NodeRunIcon status={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'failed' : 'cancelled'} className="h-3.5 w-3.5" />)}
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {tab === 'run' && run ? (
+              <RunPanel
+                run={run}
+                states={runStates}
+                nodes={nodes}
+                versionOf={versionOf}
+                otherVersion={!overlayRun}
+                onSelectNode={selectNode}
+                onRerun={!runActive ? rerun : null}
+                rerunning={runBusy === 'rerun'}
+                onOpenVersion={!overlayRun && run.target_type === 'workflow' ? () => openVersionById(run.target_id, run.id) : null}
               />
-              {stepResults[selected.id] && <StepResult step={stepResults[selected.id]} />}
-            </fieldset>
-          ) : (
-            <AutomationSettings meta={meta_} setMeta={(m) => { setMeta(m); setDirty(true); }} settings={flowSettings} setSettings={(s) => { setFlowSettings(s); setDirty(true); }} editable={editable} lastRun={lastRun} credentialTypes={credentialTypes} />
-          )}
+            ) : tab === 'history' ? (
+              <RunHistory groupId={current?.group_id} versionOf={versionOf} currentId={current?.id} shownRunId={run?.id} refreshKey={`${run?.id}:${run?.status}`} onOpen={openRunFromHistory} />
+            ) : tab === 'versions' ? (
+              current ? (
+                <VersionsPanel versions={versionInfo} currentId={current.id} canRun={can(user, 'workflow:run')} onOpen={(v) => openVersionById(v.id)} onRun={runVersion} />
+              ) : (
+                <p className="text-sm text-muted-strong">Save the workflow to create its first version.</p>
+              )
+            ) : selected ? (
+              <fieldset disabled={!editable} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-navy">{meta(selected, catalog).title}</h3>
+                  {editable && selected.type !== 'input' && <Button variant="danger" icon={Trash2} onClick={() => removeNode(selected.id)}>Remove</Button>}
+                </div>
+                {selected.type === 'action' && <p className="-mt-2 text-sm text-muted-strong">{catalog.find((n) => n.key === selected.data?.action)?.description}</p>}
+                {overlayStates[selected.id] && <NodeRunDetails state={overlayStates[selected.id]} run={overlayRun} />}
+                {problems[selected.id] && !overlayRun && (
+                  <div className="space-y-1">
+                    {problems[selected.id].errors.map((e) => <Alert key={e}>{e}</Alert>)}
+                    {problems[selected.id].warnings.map((w) => <div key={w} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{w}</div>)}
+                  </div>
+                )}
+                <Field label="Name of this step">
+                  <Input value={selected.data?.label || ''} maxLength={120} onChange={(e) => updateData(selected.id, { label: e.target.value })} />
+                </Field>
+                <NodeSettings
+                  node={selected}
+                  catalog={catalog}
+                  groups={groups}
+                  agents={agents}
+                  credentialTypes={credentialTypes}
+                  onChange={(patch) => updateData(selected.id, patch)}
+                  onTriggers={current && editable ? () => setTriggersOpen(true) : null}
+                  onRenameCase={(from, to) => renameCase(selected.id, from, to)}
+                  onDropCase={(v) => dropCase(selected.id, v)}
+                  onRenameField={renameField}
+                />
+                <StepOutputs node={selected} catalog={catalog} agents={agents} />
+              </fieldset>
+            ) : (
+              <AutomationSettings meta={meta_} setMeta={(m) => { setMeta(m); setDirty(true); }} settings={flowSettings} setSettings={(s) => { setFlowSettings(s); setDirty(true); }} editable={editable} credentialTypes={credentialTypes} />
+            )}
+          </div>
         </div>
       </div>
 
-      {testOpen && current && (
-        <TestRun workflow={current} fields={startNode?.data?.fields || []} onClose={() => setTestOpen(false)} onResult={(run) => { setLastRun(run); setNotice(run.status === 'succeeded' ? { kind: 'success', text: 'Test succeeded. Click a step to see what it produced.' } : { kind: 'error', text: run.error }); }} />
+      {startDialog && (
+        <StartRunDialog
+          mode={startDialog.mode}
+          workflow={startDialog.workflow}
+          fields={startDialog.fields}
+          onClose={() => setStartDialog(null)}
+          onStarted={(r) => { setStartDialog(null); showRun(r); }}
+        />
       )}
       {triggersOpen && current && <Triggers workflow={current} isLive={!!live} fields={startNode?.data?.fields || []} onClose={() => setTriggersOpen(false)} />}
     </div>
   );
 }
 
-function StepResult({ step }) {
+/** "This step outputs": the data later steps can use, as the variables to type or insert. */
+function StepOutputs({ node, catalog, agents }) {
+  if (node.type === 'end') return null;
+  const keys = node.type === 'loop' ? ['results', 'count', 'errors'] : outputKeys(node, catalog, agents);
+  const root = node.type === 'input' ? 'input' : node.id;
+  const agent = node.data?.action === 'run_agent' ? agents.find((a) => a.id === Number(node.data?.config?.agent_id)) : null;
+  const types = agent?.output_schema?.properties || {};
   return (
-    <div className="rounded-md border bg-app p-3">
-      <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase text-muted-strong">
-        Last test <StatusBadge status={step.status === 'success' ? 'succeeded' : step.status} />
-        {step.attempts > 1 && <span className="normal-case">{step.attempts} attempts</span>}
-      </div>
-      {step.error && <p className="mb-1 text-sm text-red-600">{step.error}</p>}
-      {step.output !== undefined && <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">{JSON.stringify(step.output, null, 2)}</pre>}
+    <div data-testid="step-outputs" className="rounded-md border border-brand-100 bg-brand-50/60 p-2.5">
+      <div className="mb-1 text-xs font-semibold text-navy">This step outputs</div>
+      {keys.length ? (
+        <>
+          <ul className="flex flex-wrap gap-1">
+            {[...new Set(keys)].map((k) => (
+              <li key={k} title={`Use {{${root}.${k}}} in a later step`} className="rounded border border-brand-200 bg-surface px-1.5 py-0.5 font-mono text-[11px] text-brand-800">
+                {k}{types[k]?.type ? <span className="text-muted-strong">: {types[k].type}</span> : null}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-[11px] text-muted-strong">
+            Later steps can use these with <i>Insert data</i>, e.g. <code className="font-mono">{`{{${root}.${keys[0]}}}`}</code>.
+          </p>
+        </>
+      ) : (
+        <p className="text-[11px] text-muted-strong">{node.type === 'action' ? 'Its result, as the step reports it (run a test to see it).' : 'Nothing that later steps use.'}</p>
+      )}
     </div>
   );
 }
@@ -725,7 +944,7 @@ function AlertSettings({ settings, setSettings, credentialTypes }) {
   );
 }
 
-function AutomationSettings({ meta, setMeta, settings, setSettings, editable, lastRun, credentialTypes }) {
+function AutomationSettings({ meta, setMeta, settings, setSettings, editable, credentialTypes }) {
   return (
     <fieldset disabled={!editable} className="space-y-3">
       <h3 className="font-semibold text-navy">About this workflow</h3>
@@ -753,15 +972,10 @@ function AutomationSettings({ meta, setMeta, settings, setSettings, editable, la
         <ul className="mt-1 list-disc space-y-1 pl-4">
           <li>Click a step to set it up. Use <i>Insert data</i> to use results from earlier steps.</li>
           <li>New steps are added after the selected step (or before Finish). Click a connection to remove it.</li>
-          <li><b>Test</b> runs your draft; <b>Publish</b> makes it live. Ctrl+Z undoes.</li>
+          <li><b>Test</b> runs your draft and shows each step on the canvas as it runs; <b>Publish</b> makes it live. Ctrl+Z undoes.</li>
+          <li>Problems are checked as you edit (top left of the canvas); click one to jump to the step.</li>
         </ul>
       </div>
-      {lastRun && (
-        <div>
-          <div className="mb-1 text-xs font-semibold uppercase text-muted-strong">Last test result</div>
-          {lastRun.status === 'succeeded' ? <ResultView value={lastRun.output?.result} /> : <Alert>{lastRun.error}</Alert>}
-        </div>
-      )}
     </fieldset>
   );
 }
@@ -838,22 +1052,34 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
               {isLoop ? (
                 <Checkbox label="If one item fails, keep going with the others" checked={!!settings.item_errors_continue} onChange={(e) => onChange({ settings: { ...settings, item_errors_continue: e.target.checked } })} />
               ) : (
-                <div className="flex gap-2">
-                  <Field label="Retry times" className="flex-1">
-                    <Select value={settings.retries || 0} onChange={(e) => onChange({ settings: { ...settings, retries: Number(e.target.value) } })}>
-                      {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? "Don't retry" : n}</option>)}
-                    </Select>
+                <>
+                  <div className="flex gap-2">
+                    <Field label="Retry times" className="flex-1">
+                      <Select value={settings.retries || 0} onChange={(e) => onChange({ settings: { ...settings, retries: Number(e.target.value) } })}>
+                        {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n === 0 ? "Don't retry" : n}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Wait between (seconds)" className="flex-1">
+                      <Input type="number" min="0" max="60" value={settings.retry_delay_seconds ?? 1} disabled={!settings.retries} onChange={(e) => onChange({ settings: { ...settings, retry_delay_seconds: Number(e.target.value) } })} />
+                    </Field>
+                  </div>
+                  {settings.retries > 0 && (
+                    <Field label="Wait between retries">
+                      <Select value={settings.retry_backoff || 'fixed'} onChange={(e) => onChange({ settings: { ...settings, retry_backoff: e.target.value } })}>
+                        <option value="fixed">The same each time</option>
+                        <option value="exponential">Twice as long each time (1s, 2s, 4s…)</option>
+                      </Select>
+                    </Field>
+                  )}
+                  <Field label="Time limit (seconds)" hint="Fail the step if one attempt takes longer. 0 = no limit (the workflow's overall limit still applies).">
+                    <Input type="number" min="0" max="3600" value={settings.timeout_seconds ?? 0} onChange={(e) => onChange({ settings: { ...settings, timeout_seconds: Math.max(0, Math.min(3600, Number(e.target.value) || 0)) } })} />
                   </Field>
-                  <Field label="Wait between (seconds)" className="flex-1">
-                    <Input type="number" min="0" max="60" value={settings.retry_delay_seconds ?? 1} onChange={(e) => onChange({ settings: { ...settings, retry_delay_seconds: Number(e.target.value) } })} />
-                  </Field>
-                </div>
+                </>
               )}
               <Checkbox label="Keep the workflow going (the step's output becomes { error })" checked={!!settings.continue_on_error} onChange={(e) => onChange({ settings: { ...settings, continue_on_error: e.target.checked } })} />
             </div>
           </details>
         )}
-        {nt?.output_hint && <p className="text-xs text-muted-strong">Produces: <code>{isLoop ? '{ results: [...], count }' : nt.output_hint}</code></p>}
       </div>
     );
   }
@@ -921,49 +1147,4 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
   }
 
   return <p className="text-sm text-muted-strong">This is an older step type. It still runs, but cannot be edited here.</p>;
-}
-
-function TestRun({ workflow, fields, onClose, onResult }) {
-  const [input, setInput] = useState({});
-  const [run, setRun] = useState(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const go = async () => {
-    const missing = missingRequired(fields, input);
-    if (missing.length) {
-      setError(`Please fill in: ${missing.join(', ')}`);
-      return;
-    }
-    setError('');
-    setLoading(true);
-    try {
-      const res = (await api.post(`/workflows/${workflow.id}/test`, { input })).data;
-      setRun(res);
-      onResult(res);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Modal wide title={`Test “${workflow.name}”`} onClose={onClose} footer={run ? <Button onClick={onClose}>Show on canvas</Button> : null}>
-      <div className="space-y-3">
-        <RunForm fields={fields} value={input} onChange={setInput} />
-        <Button icon={FlaskConical} loading={loading} onClick={go}>Run test</Button>
-        <Alert>{error}</Alert>
-        {run && (
-          <>
-            <Alert kind={run.status === 'succeeded' ? 'success' : 'error'}>
-              {run.status === 'succeeded' ? <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Succeeded</span> : run.error}
-            </Alert>
-            {run.output && <ResultView value={run.output.result} />}
-            <RunSteps steps={run.steps} />
-          </>
-        )}
-      </div>
-    </Modal>
-  );
 }

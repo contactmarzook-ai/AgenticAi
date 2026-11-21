@@ -26,8 +26,7 @@ const S = process.argv[2];
   await page.click('button:has-text("Test")');
   await dlg.locator('textarea').first().fill('Our checkout is down, customers cannot pay. Fix ASAP!');
   await dlg.locator('button:has-text("Run test")').click();
-  await dlg.getByText('Succeeded', { exact: true }).waitFor();
-  await dlg.locator('button:has-text("Show on canvas")').click();
+  await page.locator('[data-testid=run-status][data-status=succeeded]').waitFor();
   await page.click('.react-flow__node:has-text("How urgent is it?")');
   await page.waitForSelector('text=Last test');
   await shot('a03-tested');
@@ -54,9 +53,8 @@ const S = process.argv[2];
   await dlg.locator('textarea').first().fill('Vendor: Acme Corp\nInvoice number: INV-778\nTotal amount: 25000\nDue date: 2026-12-31');
   await dlg.locator('input[type=number]').fill('10000');
   await dlg.locator('button:has-text("Run test")').click();
-  await dlg.getByText('Succeeded', { exact: true }).waitFor();
+  await page.locator('[data-testid=run-status][data-status=succeeded]').waitFor();
   await shot('a06-template-test');
-  await dlg.locator('button:has-text("Show on canvas")').click();
   await page.click('button:has-text("Back")');
 
   // 4. Blank build with a form field and Insert data
@@ -75,10 +73,9 @@ const S = process.argv[2];
   await page.click('button:has-text("Test")');
   await dlg.locator('input').first().fill('Ravi');
   await dlg.locator('button:has-text("Run test")').click();
-  await dlg.getByText('Succeeded', { exact: true }).waitFor();
-  const out = await dlg.locator('pre').first().innerText();
+  await page.locator('[data-testid=run-status][data-status=succeeded]').waitFor();
+  const out = await page.locator('[data-testid=run-panel]').innerText();
   if (!out.includes('Ravi')) throw new Error('variable not resolved: ' + out);
-  await dlg.locator('button:has-text("Show on canvas")').click();
   await shot('a07-blank-build');
   await page.click('button:has-text("Back")');
 
