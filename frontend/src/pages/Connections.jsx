@@ -59,17 +59,17 @@ export default function Connections() {
         {!items.length ? (
           <Empty>No connections yet.</Empty>
         ) : (
-          <div className="divide-y rounded-xl border bg-white">
+          <div className="divide-y rounded-lg border bg-surface shadow-card">
             {items.map((c) => (
               <div key={c.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
-                <div className="rounded-md bg-sky-50 p-2"><Plug className="h-4 w-4 text-sky-700" /></div>
+                <div className="rounded-md bg-brand-50 p-2"><Plug className="h-4 w-4 text-brand-700" /></div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-gray-900">{c.name}</span>
+                    <span className="font-medium text-ink">{c.name}</span>
                     <Badge>{types.find((t) => t.key === c.type)?.name || c.type}</Badge>
                     <Badge color={c.visibility === 'private' ? 'gray' : 'blue'}>{c.visibility === 'private' ? 'only owner' : c.visibility}</Badge>
                   </div>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-muted-strong">
                     {Object.entries(c.public_data).map(([k, v]) => `${k}: ${v}`).join(' · ') || 'secret values hidden'} · updated {formatDate(c.updated_at)}
                   </p>
                 </div>

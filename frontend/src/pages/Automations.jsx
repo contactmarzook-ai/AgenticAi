@@ -138,7 +138,7 @@ export default function Automations({ user }) {
 
   if (open !== undefined) {
     return (
-      <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading builder…</div>}>
+      <Suspense fallback={<div className="p-6 text-sm text-muted-strong">Loading builder…</div>}>
         <FlowBuilder
           key={open.workflow?.id ?? 'new'}
           workflow={open.workflow}
@@ -157,13 +157,13 @@ export default function Automations({ user }) {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl space-y-8 px-6 py-8">
+      <div className="mx-auto max-w-5xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
         {canBuild && (
-          <section className="rounded-xl border bg-white p-6 shadow-sm">
-            <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
-              <Sparkles className="h-5 w-5 text-violet-600" /> What would you like to automate?
+          <section className="rounded-lg border bg-surface p-4 shadow-card sm:p-6">
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-navy">
+              <Sparkles className="h-5 w-5 text-accent-600" /> What would you like to automate?
             </h1>
-            <p className="mt-1 text-sm text-gray-500">Describe it in plain words. AI drafts the steps; you review, test and publish.</p>
+            <p className="mt-1 text-sm text-muted-strong">Describe it in plain words. AI drafts the steps; you review, test and publish.</p>
             {settings.ai_builder_enabled !== false ? (
               <>
                 <textarea
@@ -172,26 +172,26 @@ export default function Automations({ user }) {
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={3}
                   placeholder="e.g. When a customer emails a complaint, summarize it, decide how urgent it is, and post urgent ones to Slack"
-                  className="mt-4 w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  className="mt-4 w-full resize-none rounded-lg border border-line px-3 py-2.5 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20"
                 />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {EXAMPLES.map((ex) => (
-                    <button key={ex} onClick={() => setPrompt(ex)} className="rounded-full border px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50">{ex}</button>
+                    <button key={ex} onClick={() => setPrompt(ex)} className="rounded-full border px-2.5 py-1 text-xs text-muted-strong hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700">{ex}</button>
                   ))}
                 </div>
               </>
             ) : (
-              <p className="mt-3 text-sm text-gray-500">The AI builder is turned off by your administrator.</p>
+              <p className="mt-3 text-sm text-muted-strong">The AI builder is turned off by your administrator.</p>
             )}
             <div className="mt-4 flex flex-wrap gap-2">
               {settings.ai_builder_enabled !== false && (
-                <Button icon={Wand2} loading={generating} disabled={prompt.trim().length < 5} onClick={generate} className="bg-violet-600 hover:bg-violet-700">
+                <Button icon={Wand2} loading={generating} disabled={prompt.trim().length < 5} onClick={generate} className="!bg-accent !text-navy-900 hover:!bg-accent-600 disabled:!bg-accent-100 disabled:!text-muted-strong">
                   {generating ? 'Drafting… (local models can take a minute)' : 'Create with AI'}
                 </Button>
               )}
               <Button variant="secondary" icon={LayoutTemplate} onClick={() => setShowTemplates(true)}>Start from a template</Button>
               <Button variant="ghost" icon={Plus} onClick={() => setOpen({})}>Start blank</Button>
-              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-strong hover:bg-brand-50">
                 <Upload className="h-4 w-4" /> Import
                 <input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) importJson(e.target.files[0]); e.target.value = ''; }} />
               </label>
@@ -202,44 +202,44 @@ export default function Automations({ user }) {
 
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Your workflows</h2>
+            <h2 className="text-lg font-semibold text-navy">Your workflows</h2>
             {info && <span className="text-sm text-green-700">{info}</span>}
             {groups.length > 4 || query ? (
               <div className="relative">
-                <Search className="absolute left-2 top-2 h-4 w-4 text-gray-400" />
-                <input className="rounded-md border py-1.5 pl-7 pr-2 text-sm" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <Search className="absolute left-2 top-2 h-4 w-4 text-muted" />
+                <input className="rounded-md border py-1.5 pl-7 pr-2 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
               </div>
             ) : null}
           </div>
           {!groups.length ? (
             <Empty>{canBuild ? 'Nothing yet. Describe one above or pick a template.' : 'No workflows are shared with you yet.'}</Empty>
           ) : (
-            <div className="divide-y rounded-xl border bg-white">
+            <div className="divide-y rounded-lg border bg-surface shadow-card">
               {groups.map(({ latest, live, lastOff }) => {
                 const wf = live || latest;
                 const off = !live && !!lastOff;
                 const isOwner = user.role === 'admin' || latest.owner_id === user.id;
                 return (
                   <div key={latest.group_id} className="flex flex-wrap items-center gap-2 px-5 py-4">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-[14rem] flex-1">
                       <div className="flex items-center gap-2">
-                        <button className="truncate font-medium text-gray-900 hover:underline" onClick={() => setOpen({ workflow: latest })}>{wf.name}</button>
+                        <button className="truncate font-medium text-ink hover:underline" onClick={() => setOpen({ workflow: latest })}>{wf.name}</button>
                         {live ? <Badge color="green">live</Badge> : off ? <Badge color="red">off</Badge> : <Badge color="yellow">draft</Badge>}
                         {(live || off) && latest.status === 'draft' && <Badge>newer draft</Badge>}
                       </div>
-                      <p className="truncate text-sm text-gray-500">{wf.description || 'No description'}</p>
-                      <p className="text-xs text-gray-400">Updated {formatDate(latest.updated_at)}</p>
+                      <p className="truncate text-sm text-muted-strong">{wf.description || 'No description'}</p>
+                      <p className="text-xs text-muted-strong">Updated {formatDate(latest.updated_at)}</p>
                     </div>
                     {live && can(user, 'workflow:run') && <Button variant="secondary" icon={Play} onClick={() => setRunning(live)}>Run</Button>}
                     {off && lastOff.can_edit && can(user, 'workflow:activate') && (
                       <Button variant="secondary" icon={Power} onClick={() => act(() => api.post(`/workflows/${lastOff.id}/activate`), `“${wf.name}” (version ${lastOff.version}) is live again.`)}>Turn on</Button>
                     )}
                     <Button variant="ghost" onClick={() => setOpen({ workflow: latest })}>{latest.can_edit ? 'Edit' : 'View'}</Button>
-                    <button title="History" aria-label="History" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => { window.location.hash = `#/runs?group=${latest.group_id}&name=${encodeURIComponent(wf.name)}`; }}><History className="h-4 w-4" /></button>
-                    {canBuild && <button title="Duplicate" aria-label="Duplicate" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => act(() => api.post(`/workflows/${wf.id}/duplicate`), `Copied “${wf.name}”.`)}><Copy className="h-4 w-4" /></button>}
-                    {canBuild && <button title="Export as a file" aria-label="Export" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => exportJson(latest)}><Download className="h-4 w-4" /></button>}
+                    <button title="History" aria-label="History" className="rounded p-1.5 text-muted-strong hover:bg-brand-50" onClick={() => { window.location.hash = `#/runs?group=${latest.group_id}&name=${encodeURIComponent(wf.name)}`; }}><History className="h-4 w-4" /></button>
+                    {canBuild && <button title="Duplicate" aria-label="Duplicate" className="rounded p-1.5 text-muted-strong hover:bg-brand-50" onClick={() => act(() => api.post(`/workflows/${wf.id}/duplicate`), `Copied “${wf.name}”.`)}><Copy className="h-4 w-4" /></button>}
+                    {canBuild && <button title="Export as a file" aria-label="Export" className="rounded p-1.5 text-muted-strong hover:bg-brand-50" onClick={() => exportJson(latest)}><Download className="h-4 w-4" /></button>}
                     {canBuild && isOwner && (
-                      <button title="Delete" aria-label="Delete" className="rounded p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"
+                      <button title="Delete" aria-label="Delete" className="rounded p-1.5 text-muted-strong hover:bg-red-50 hover:text-red-600"
                         onClick={() => confirm(`Delete “${wf.name}” with all its versions, schedules, form links and webhooks? Run history is kept.`) && act(() => api.delete(`/workflows/groups/${latest.group_id}`), `Deleted “${wf.name}”.`)}>
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -256,11 +256,11 @@ export default function Automations({ user }) {
         <Modal wide title="Templates" onClose={() => setShowTemplates(false)}>
           <div className="grid gap-3 md:grid-cols-2">
             {templates.map((t) => (
-              <button key={t.key} disabled={creating} onClick={() => applyTemplate(t)} className="rounded-lg border p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40">
-                <div className="text-xs font-medium uppercase text-gray-400">{t.category}</div>
-                <div className="font-medium text-gray-900">{t.name}</div>
-                <p className="mt-1 text-sm text-gray-600">{t.description}</p>
-                <p className="mt-2 text-xs text-gray-400">
+              <button key={t.key} disabled={creating} onClick={() => applyTemplate(t)} className="rounded-lg border p-4 text-left hover:border-brand-400 hover:bg-brand-50/40">
+                <div className="text-xs font-medium uppercase text-muted-strong">{t.category}</div>
+                <div className="font-medium text-ink">{t.name}</div>
+                <p className="mt-1 text-sm text-muted-strong">{t.description}</p>
+                <p className="mt-2 text-xs text-muted-strong">
                   {t.steps} steps{t.needs.length ? ` · needs a ${t.needs.map((n) => catalog.credential_types.find((c) => c.key === n)?.name || n).join(', ')} connection` : ' · works right away'}
                 </p>
               </button>
@@ -311,14 +311,14 @@ function RunAutomation({ workflow, onClose }) {
           </>
         )}
         <Alert>{error}</Alert>
-        {run && !finished && <p className="text-sm text-gray-500">Running… <StatusBadge status={run.status} /></p>}
+        {run && !finished && <p className="text-sm text-muted-strong">Running… <StatusBadge status={run.status} /></p>}
         {finished && (
           <div className="space-y-3">
             {run.status === 'failed' ? <Alert>{run.error}</Alert> : (
               <ResultView value={result} />
             )}
             <details>
-              <summary className="cursor-pointer text-sm text-gray-500">Step by step</summary>
+              <summary className="cursor-pointer text-sm text-muted-strong">Step by step</summary>
               <div className="mt-2"><RunSteps steps={run.steps} /></div>
             </details>
             <Button variant="secondary" onClick={() => { setRun(null); }}>Run again</Button>

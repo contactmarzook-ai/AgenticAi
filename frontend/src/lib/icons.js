@@ -15,11 +15,13 @@ export function iconFor(name) {
   return ICONS[name] || Zap;
 }
 
+// Step categories on the builder canvas. Brand-palette based, but kept visually distinct;
+// AI steps carry the orange accent (dark orange text on a pale tint for contrast).
 export const CATEGORY_STYLE = {
-  AI: { text: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-400' },
-  Apps: { text: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-400' },
-  Data: { text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-400' },
-  Flow: { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-400' },
-  Start: { text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-500' },
-  Finish: { text: 'text-gray-800', bg: 'bg-gray-100', border: 'border-gray-700' },
+  AI: { text: 'text-accent-700', bg: 'bg-accent-50', border: 'border-accent' },
+  Apps: { text: 'text-brand-700', bg: 'bg-brand-50', border: 'border-brand-500' },
+  Data: { text: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-500' },
+  Flow: { text: 'text-slate-700', bg: 'bg-slate-100', border: 'border-slate-500' },
+  Start: { text: 'text-green-700', bg: 'bg-green-50', border: 'border-green-600' },
+  Finish: { text: 'text-navy', bg: 'bg-navy-50', border: 'border-navy' },
 };

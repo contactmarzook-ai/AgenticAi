@@ -19,8 +19,9 @@ const LINKS = [
   ['trigger', 'agent'], ['agent', 'decide'], ['decide', 'act'], ['decide', 'notify'], ['act', 'done'], ['notify', 'done'],
 ];
 
-function brandRgb(shade, fallback) {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(`--brand-${shade}`).trim();
+// Colours come from the theme tokens in src/theme.css ("R G B" triplets).
+function themeRgb(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();
   return v ? v.split(/\s+/).join(',') : fallback;
 }
 
@@ -31,8 +32,10 @@ export default function StarDustScene() {
     const canvas = ref.current;
     const ctx = canvas.getContext('2d');
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const accent = brandRgb(300, '165,180,252');
-    const accentStrong = brandRgb(400, '129,140,248');
+    const accent = themeRgb('brand-300', '127,174,214');
+    const accentStrong = themeRgb('brand-400', '79,140,196');
+    // Restrained orange: only the core of a step flashes orange when work arrives.
+    const orange = themeRgb('accent-500', '242,140,40');
     let w = 0;
     let h = 0;
     let raf = 0;
@@ -145,7 +148,7 @@ export default function StarDustScene() {
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = `rgba(${accentStrong},1)`;
+        ctx.fillStyle = g > 0.35 ? `rgba(${orange},1)` : `rgba(${accentStrong},1)`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius * 0.45, 0, Math.PI * 2);
         ctx.fill();

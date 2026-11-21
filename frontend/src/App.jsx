@@ -67,50 +67,51 @@ function SignedInApp() {
   }, [token, user, setUser, logout]);
 
   if (!token) return <Login />;
-  if (!user) return <div className="flex h-screen items-center justify-center text-sm text-gray-500">Loading…</div>;
+  if (!user) return <div className="flex h-screen items-center justify-center text-sm text-muted-strong">Loading…</div>;
 
   const visible = PAGES.filter((p) => can(user, p.perm));
   const current = visible.find((p) => p.id === page && p.component) || visible.find((p) => p.component);
   const Page = current.component;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <aside className="flex w-56 flex-shrink-0 flex-col border-r bg-white">
-        <div className="px-4 py-4">
-          <Logo />
+    <div className="flex h-screen overflow-hidden bg-app text-ink">
+      <aside className="flex w-16 flex-shrink-0 flex-col bg-navy text-navy-100 md:w-60">
+        <div className="flex justify-center px-3 py-5 md:justify-start md:px-5">
+          <Logo light compact />
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-2 md:px-3">
           {visible.map((p) =>
             p.section ? (
-              <div key={p.section} className="px-2 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                {p.section}
+              <div key={p.section} className="mx-2 border-t border-white/10 pb-1 pt-4 md:mx-0 md:border-0 md:px-3 md:pt-5">
+                <span className="hidden text-[11px] font-semibold uppercase tracking-wider text-navy-200 md:inline">{p.section}</span>
               </div>
             ) : (
               <button
                 key={p.id}
                 onClick={() => go(p.id)}
+                title={p.label}
                 className={cx(
-                  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm',
-                  current.id === p.id ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-gray-600 hover:bg-gray-50',
+                  'flex w-full items-center justify-center gap-3 rounded-md px-3 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 md:justify-start',
+                  current.id === p.id ? 'bg-brand-600 font-medium text-white shadow-sm' : 'text-navy-100 hover:bg-navy-600 hover:text-white',
                 )}
               >
-                <p.icon className="h-4 w-4" />
-                {p.label}
+                <p.icon className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden md:inline">{p.label}</span>
               </button>
             ),
           )}
         </nav>
-        <div className="border-t p-3 text-sm">
-          <div className="truncate font-medium text-gray-800" title={user.email}>{user.full_name || user.email}</div>
-          <div className="mb-2 text-xs text-gray-500">
+        <div className="border-t border-white/10 p-2 text-sm md:p-3">
+          <div className="hidden truncate px-2 font-medium text-white md:block" title={user.email}>{user.full_name || user.email}</div>
+          <div className="mb-2 hidden px-2 text-xs text-navy-200 md:block">
             <span className="capitalize">{user.role}</span>
             {user.department ? ` · ${user.department}` : ''}
           </div>
-          <button onClick={() => setShowPassword(true)} className="flex w-full items-center gap-2 rounded px-1 py-1 text-gray-600 hover:bg-gray-50">
-            <KeyRound className="h-4 w-4" /> Change password
+          <button onClick={() => setShowPassword(true)} title="Change password" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-navy-100 hover:bg-navy-600 hover:text-white md:justify-start">
+            <KeyRound className="h-4 w-4 flex-shrink-0" /> <span className="hidden md:inline">Change password</span>
           </button>
-          <button onClick={() => confirmLeave() && logout()} className="flex w-full items-center gap-2 rounded px-1 py-1 text-red-600 hover:bg-red-50">
-            <LogOut className="h-4 w-4" /> Sign out
+          <button onClick={() => confirmLeave() && logout()} title="Sign out" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-red-200 hover:bg-red-500/15 hover:text-white md:justify-start">
+            <LogOut className="h-4 w-4 flex-shrink-0" /> <span className="hidden md:inline">Sign out</span>
           </button>
         </div>
       </aside>

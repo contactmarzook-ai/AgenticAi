@@ -66,13 +66,13 @@ export default function Agents({ user }) {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {agents.map((a) => (
-              <div key={a.id} className="flex flex-col rounded-lg border bg-white p-4 shadow-sm">
+              <div key={a.id} className="flex flex-col rounded-lg border bg-surface p-4 shadow-card">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <div className="rounded-md bg-indigo-50 p-1.5">
-                      <Bot className="h-4 w-4 text-indigo-600" />
+                    <div className="rounded-md bg-brand-50 p-1.5">
+                      <Bot className="h-4 w-4 text-brand-600" />
                     </div>
-                    <h3 className="font-semibold text-gray-900">{a.name}</h3>
+                    <h3 className="font-semibold text-navy">{a.name}</h3>
                   </div>
                   <div className="flex gap-1">
                     {!a.is_active && <Badge color="red">disabled</Badge>}
@@ -82,15 +82,15 @@ export default function Agents({ user }) {
                     </Badge>
                   </div>
                 </div>
-                <p className="mb-3 line-clamp-3 flex-1 text-sm text-gray-600">{a.description || 'No description.'}</p>
+                <p className="mb-3 line-clamp-3 flex-1 text-sm text-muted-strong">{a.description || 'No description.'}</p>
                 <div className="mb-3 flex flex-wrap gap-1">
                   {a.tools.map((t) => (
-                    <span key={t} className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-600">
+                    <span key={t} className="inline-flex items-center gap-1 rounded bg-app px-1.5 ring-1 ring-inset ring-line py-0.5 font-mono text-xs text-muted-strong">
                       <Wrench className="h-3 w-3" />
                       {t}
                     </span>
                   ))}
-                  {canWrite && <span className="text-xs text-gray-400">{modelName(a.model_id)}</span>}
+                  {canWrite && <span className="text-xs text-muted-strong">{modelName(a.model_id)}</span>}
                 </div>
                 <div className="flex gap-2">
                   {a.is_active && can(user, 'agent:run') && (
@@ -189,15 +189,15 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
           <Textarea rows={6} value={form.system_prompt} onChange={(e) => set('system_prompt', e.target.value)} />
         </Field>
         <div>
-          <div className="mb-1 text-xs font-medium text-gray-600">Tools</div>
+          <div className="mb-1 text-xs font-medium text-muted-strong">Tools</div>
           {toolsBlocked && <Alert kind="info">The selected model does not support tool calling, so tools are disabled.</Alert>}
           <div className="grid gap-2 md:grid-cols-2">
             {tools.map((t) => (
-              <label key={t.name} className="flex cursor-pointer gap-2 rounded-md border p-2 text-sm hover:bg-gray-50">
+              <label key={t.name} className="flex cursor-pointer gap-2 rounded-md border p-2 text-sm hover:bg-brand-50">
                 <input type="checkbox" className="mt-0.5" disabled={toolsBlocked} checked={form.tools.includes(t.name)} onChange={() => toggleTool(t.name)} />
                 <span>
-                  <span className="font-medium text-gray-900">{t.description.split(':')[0]}</span>
-                  <span className="block text-xs text-gray-500">{t.description.split(':').slice(1).join(':').trim() || t.description}</span>
+                  <span className="font-medium text-ink">{t.description.split(':')[0]}</span>
+                  <span className="block text-xs text-muted-strong">{t.description.split(':').slice(1).join(':').trim() || t.description}</span>
                 </span>
               </label>
             ))}
@@ -219,7 +219,7 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
           </div>
         </div>
         <details className="rounded-md border p-3 text-sm">
-          <summary className="cursor-pointer text-gray-600">Advanced</summary>
+          <summary className="cursor-pointer text-muted-strong">Advanced</summary>
           <div className="mt-3">
             <div className="grid gap-4 md:grid-cols-3">
           <Field label="Chat keywords" hint="Comma separated. Messages containing one go straight to this agent (otherwise the AI decides).">
@@ -269,11 +269,11 @@ function TryAgent({ agent, onClose }) {
         {run && (
           <div className="space-y-3">
             {run.status === 'succeeded' ? (
-              <div className="whitespace-pre-wrap rounded-md border bg-gray-50 p-3 text-sm">{run.output?.answer}</div>
+              <div className="whitespace-pre-wrap rounded-md border bg-app p-3 text-sm">{run.output?.answer}</div>
             ) : (
               <Alert>{run.error}</Alert>
             )}
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-strong">
               {run.model_name} · {run.llm_calls} LLM calls · {run.prompt_tokens + run.completion_tokens} tokens
             </p>
             <RunSteps steps={run.steps} />

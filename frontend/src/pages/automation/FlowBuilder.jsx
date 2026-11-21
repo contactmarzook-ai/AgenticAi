@@ -31,7 +31,7 @@ const LOGIC = [
 ];
 const BRANCHING = ['condition', 'switch'];
 const STATUS_ICON = { success: CircleCheck, failed: CircleX, error_continued: CircleX, skipped: CircleDashed };
-const STATUS_COLOR = { success: 'text-green-600', failed: 'text-red-600', error_continued: 'text-amber-600', skipped: 'text-gray-400' };
+const STATUS_COLOR = { success: 'text-green-600', failed: 'text-red-600', error_continued: 'text-amber-600', skipped: 'text-muted-strong' };
 const FORM_TYPES = [['text', 'Short text'], ['textarea', 'Long text'], ['number', 'Number'], ['email', 'Email'], ['date', 'Date'], ['select', 'Choice'], ['boolean', 'Yes / no']];
 
 function meta(node, catalog) {
@@ -62,7 +62,7 @@ function StepNode({ id, data, type, selected }) {
     if (type === 'switch') updateInternals(id);
   }, [handleKey, id, type, updateInternals]);
   return (
-    <div className={cx('w-56 rounded-lg border-2 bg-white px-3 py-2 shadow-sm', selected ? m.style?.border : 'border-gray-200')}>
+    <div className={cx('w-56 rounded-lg border-2 bg-surface px-3 py-2 shadow-card', selected ? m.style?.border : 'border-line')}>
       {type !== 'input' && <Handle type="target" position={Position.Top} />}
       <div className="flex items-center gap-2">
         <div className={cx('rounded-md p-1.5', m.style?.bg)}>
@@ -70,7 +70,7 @@ function StepNode({ id, data, type, selected }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className={cx('truncate text-[10px] font-semibold uppercase tracking-wide', m.style?.text)}>{m.title}</div>
-          <div className="truncate text-sm text-gray-900">{data.label || m.title}</div>
+          <div className="truncate text-sm text-ink">{data.label || m.title}</div>
         </div>
         {StatusIcon && <StatusIcon className={cx('h-4 w-4 flex-shrink-0', STATUS_COLOR[data._status])} />}
       </div>
@@ -84,9 +84,9 @@ function StepNode({ id, data, type, selected }) {
       {type === 'switch' && (
         <>
           {cases.map((c, i) => (
-            <Handle key={`${i}-${c}`} type="source" position={Position.Bottom} id={c} style={{ left: `${((i + 1) * 100) / (cases.length + 1)}%`, background: c === 'default' ? '#6b7280' : '#d97706' }} />
+            <Handle key={`${i}-${c}`} type="source" position={Position.Bottom} id={c} style={{ left: `${((i + 1) * 100) / (cases.length + 1)}%`, background: c === 'default' ? 'rgb(var(--muted))' : 'rgb(var(--navy-500))' }} />
           ))}
-          <div className="mt-1 flex justify-around text-[10px] font-semibold text-amber-700">
+          <div className="mt-1 flex justify-around text-[10px] font-semibold text-slate-700">
             {cases.map((c, i) => <span key={`${i}-${c}`} className="max-w-[4rem] truncate">{c}</span>)}
           </div>
         </>
@@ -100,12 +100,12 @@ function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ ...style, strokeWidth: selected ? 2.5 : 1.5, stroke: selected ? '#6366f1' : '#9ca3af' }} />
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={{ ...style, strokeWidth: selected ? 2.5 : 1.5, stroke: selected ? 'rgb(var(--brand-600))' : 'rgb(var(--navy-300))' }} />
       <EdgeLabelRenderer>
         <div style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, pointerEvents: 'all' }} className="nodrag nopan flex items-center gap-1">
-          {label && <span className="rounded bg-white px-1 text-[10px] font-medium text-gray-600 shadow-sm">{label}</span>}
+          {label && <span className="rounded bg-surface px-1 text-[10px] font-medium text-muted-strong shadow-sm">{label}</span>}
           {selected && data?.onDelete && (
-            <button type="button" title="Remove this connection" aria-label="Remove this connection" onClick={() => data.onDelete(id)} className="rounded-full border bg-white p-0.5 text-gray-500 shadow hover:text-red-600">
+            <button type="button" title="Remove this connection" aria-label="Remove this connection" onClick={() => data.onDelete(id)} className="rounded-full border bg-surface p-0.5 text-muted-strong shadow hover:text-red-600">
               <X className="h-3 w-3" />
             </button>
           )}
@@ -537,7 +537,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b bg-white px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-surface px-4 py-2.5">
         <Button variant="ghost" icon={ArrowLeft} onClick={() => { if (!dirty || confirm('Leave without saving?')) { setDirty(false); onBack(); } }}>Back</Button>
         <Input className="max-w-xs font-medium" value={name} disabled={!editable} maxLength={200} onChange={(e) => { setName(e.target.value); setDirty(true); }} />
         {versions.length > 1 ? (
@@ -553,15 +553,15 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
             {versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {v.status === 'active' ? 'live' : v.status === 'archived' ? 'old' : 'draft'}</option>)}
           </select>
         ) : (
-          current && <span className="text-xs text-gray-400">v{current.version}</span>
+          current && <span className="text-xs text-muted-strong">v{current.version}</span>
         )}
         <StatusBadge status={statusLabel} />
         {dirty && <span className="text-xs text-amber-600">unsaved changes</span>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {editable && (
             <>
-              <button title="Undo (Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!history.undo.length} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
-              <button title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={redo} disabled={!history.redo.length} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
+              <button title="Undo (Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!history.undo.length} className="rounded p-1.5 text-muted-strong hover:bg-brand-50 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
+              <button title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onClick={redo} disabled={!history.redo.length} className="rounded p-1.5 text-muted-strong hover:bg-brand-50 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
               <Button variant="secondary" icon={Save} loading={busy === 'save'} onClick={save}>Save</Button>
               <Button variant="secondary" icon={FlaskConical} onClick={openTest}>Test</Button>
             </>
@@ -575,7 +575,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
         </div>
       </div>
       {newerDraft && (
-        <div className="flex flex-wrap items-center gap-2 border-b bg-blue-50 px-4 py-2 text-sm text-blue-900">
+        <div className="flex flex-wrap items-center gap-2 border-b bg-brand-50 px-4 py-2 text-sm text-brand-800">
           You are looking at version {current.version}. There is a newer draft (version {newerDraft.version}); saving here would start yet another draft.
           <Button variant="secondary" onClick={() => { if (!dirty || confirm('Open the draft without saving?')) { setDirty(false); onOpenVersion?.(newerDraft); } }}>Open the draft</Button>
         </div>
@@ -588,22 +588,22 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
         </div>
       )}
       {notice && (
-        <div className="flex items-start gap-2 border-b bg-white px-4 py-2">
+        <div className="flex items-start gap-2 border-b bg-surface px-4 py-2">
           <div className="flex-1"><Alert kind={notice.kind}>{notice.text}</Alert></div>
-          <button onClick={() => setNotice(null)} className="p-1 text-gray-400" aria-label="Dismiss"><X className="h-4 w-4" /></button>
+          <button onClick={() => setNotice(null)} className="p-1 text-muted hover:text-ink" aria-label="Dismiss"><X className="h-4 w-4" /></button>
         </div>
       )}
 
       <div className="flex min-h-0 flex-1">
         {editable && (
-          <div className="flex w-60 flex-shrink-0 flex-col border-r bg-white">
+          <div className="flex w-60 flex-shrink-0 flex-col border-r bg-surface">
             <div className="p-3 pb-2">
-              <div className="mb-2 text-xs font-semibold uppercase text-gray-400">Add a step</div>
+              <div className="mb-2 text-xs font-semibold uppercase text-muted-strong">Add a step</div>
               <div className="relative">
-                <Search className="absolute left-2 top-2 h-4 w-4 text-gray-400" />
-                <input className="w-full rounded-md border py-1.5 pl-7 pr-2 text-sm" placeholder="Search steps" value={paletteQuery} onChange={(e) => setPaletteQuery(e.target.value)} />
+                <Search className="absolute left-2 top-2 h-4 w-4 text-muted" />
+                <input className="w-full rounded-md border py-1.5 pl-7 pr-2 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20" placeholder="Search steps" value={paletteQuery} onChange={(e) => setPaletteQuery(e.target.value)} />
               </div>
-              <p className="mt-2 text-xs text-gray-400">New steps go {anchorHint}.</p>
+              <p className="mt-2 text-xs text-muted-strong">New steps go {anchorHint}.</p>
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto px-3 pb-3">
               {['AI', 'Apps', 'Data', 'Flow'].map((cat) => {
@@ -616,7 +616,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
                     <div className={cx('mb-1 text-[11px] font-semibold uppercase', st.text)}>{cat === 'Flow' ? 'Logic & flow' : cat}</div>
                     {[...logic.map((l) => ({ ...l, onClick: () => addStep(l.type), Icon: l.icon, key: l.type })),
                       ...items.map((n) => ({ ...n, onClick: () => addStep('action', n.key), Icon: iconFor(n.icon) }))].map((it) => (
-                      <button key={it.key} onClick={it.onClick} title={it.description} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-gray-50">
+                      <button key={it.key} onClick={it.onClick} title={it.description} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-brand-50">
                         <span className={cx('rounded p-1', st.bg)}><it.Icon className={cx('h-3.5 w-3.5', st.text)} /></span>
                         <span className="truncate">{it.name}</span>
                       </button>
@@ -651,14 +651,14 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
           </ReactFlow>
         </div>
 
-        <div className="w-96 flex-shrink-0 overflow-y-auto border-l bg-white p-4">
+        <div className="w-96 flex-shrink-0 overflow-y-auto border-l bg-surface p-4">
           {selected ? (
             <fieldset disabled={!editable} className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">{meta(selected, catalog).title}</h3>
+                <h3 className="font-semibold text-navy">{meta(selected, catalog).title}</h3>
                 {editable && selected.type !== 'input' && <Button variant="danger" icon={Trash2} onClick={() => removeNode(selected.id)}>Remove</Button>}
               </div>
-              {selected.type === 'action' && <p className="-mt-2 text-sm text-gray-500">{catalog.find((n) => n.key === selected.data?.action)?.description}</p>}
+              {selected.type === 'action' && <p className="-mt-2 text-sm text-muted-strong">{catalog.find((n) => n.key === selected.data?.action)?.description}</p>}
               <Field label="Name of this step">
                 <Input value={selected.data?.label || ''} maxLength={120} onChange={(e) => updateData(selected.id, { label: e.target.value })} />
               </Field>
@@ -692,13 +692,13 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
 
 function StepResult({ step }) {
   return (
-    <div className="rounded-md border bg-gray-50 p-3">
-      <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase text-gray-500">
+    <div className="rounded-md border bg-app p-3">
+      <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase text-muted-strong">
         Last test <StatusBadge status={step.status === 'success' ? 'succeeded' : step.status} />
         {step.attempts > 1 && <span className="normal-case">{step.attempts} attempts</span>}
       </div>
       {step.error && <p className="mb-1 text-sm text-red-600">{step.error}</p>}
-      {step.output !== undefined && <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs text-gray-800">{JSON.stringify(step.output, null, 2)}</pre>}
+      {step.output !== undefined && <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">{JSON.stringify(step.output, null, 2)}</pre>}
     </div>
   );
 }
@@ -713,14 +713,14 @@ function AlertSettings({ settings, setSettings, credentialTypes }) {
   const set = (patch) => setSettings({ ...settings, notify_on_failure: { ...notify, ...patch } });
   return (
     <div className="space-y-2 rounded-md border p-3">
-      <div className="text-sm font-medium text-gray-800">Tell me when it fails</div>
+      <div className="text-sm font-medium text-ink">Tell me when it fails</div>
       <Select aria-label="Failure alerts" value={notify.credential_id || ''} onChange={(e) => set({ credential_id: e.target.value ? Number(e.target.value) : '' })}>
         <option value="">Don't send alerts</option>
         {notify.credential_id && !chosen && <option value={notify.credential_id}>Set by the owner (not shared with you)</option>}
         {creds.map((c) => <option key={c.id} value={c.id}>{credentialTypes.find((t) => t.key === c.type)?.name || c.type}: {c.name}</option>)}
       </Select>
       {chosen?.type === 'smtp' && <Input type="email" placeholder="Email address to alert" value={notify.email_to || ''} onChange={(e) => set({ email_to: e.target.value })} />}
-      <p className="text-xs text-gray-400">Sent when a scheduled, webhook, form or chat run fails (not for tests). Add Slack, Teams or email under Connections.</p>
+      <p className="text-xs text-muted-strong">Sent when a scheduled, webhook, form or chat run fails (not for tests). Add Slack, Teams or email under Connections.</p>
     </div>
   );
 }
@@ -728,7 +728,7 @@ function AlertSettings({ settings, setSettings, credentialTypes }) {
 function AutomationSettings({ meta, setMeta, settings, setSettings, editable, lastRun, credentialTypes }) {
   return (
     <fieldset disabled={!editable} className="space-y-3">
-      <h3 className="font-semibold text-gray-900">About this workflow</h3>
+      <h3 className="font-semibold text-navy">About this workflow</h3>
       <Field label="Description">
         <Textarea rows={3} className="font-sans" maxLength={2000} value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} />
       </Field>
@@ -741,14 +741,14 @@ function AutomationSettings({ meta, setMeta, settings, setSettings, editable, la
       </Field>
       <AlertSettings settings={settings} setSettings={setSettings} credentialTypes={credentialTypes} />
       <details className="rounded-md border p-2 text-sm">
-        <summary className="cursor-pointer text-gray-600">Advanced</summary>
+        <summary className="cursor-pointer text-muted-strong">Advanced</summary>
         <div className="mt-2">
           <Field label="Chat keywords" hint="Comma separated. Chat messages containing one run this workflow directly (otherwise the AI decides).">
             <Input value={meta.trigger_keywords} onChange={(e) => setMeta({ ...meta, trigger_keywords: e.target.value })} />
           </Field>
         </div>
       </details>
-      <div className="rounded-md bg-indigo-50 p-3 text-sm text-indigo-900">
+      <div className="rounded-md bg-brand-50 p-3 text-sm text-brand-900">
         <b>Tips</b>
         <ul className="mt-1 list-disc space-y-1 pl-4">
           <li>Click a step to set it up. Use <i>Insert data</i> to use results from earlier steps.</li>
@@ -758,7 +758,7 @@ function AutomationSettings({ meta, setMeta, settings, setSettings, editable, la
       </div>
       {lastRun && (
         <div>
-          <div className="mb-1 text-xs font-semibold uppercase text-gray-500">Last test result</div>
+          <div className="mb-1 text-xs font-semibold uppercase text-muted-strong">Last test result</div>
           {lastRun.status === 'succeeded' ? <ResultView value={lastRun.output?.result} /> : <Alert>{lastRun.error}</Alert>}
         </div>
       )}
@@ -775,12 +775,12 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
     const setFields = (f) => onChange({ fields: f });
     return (
       <div className="space-y-3">
-        <p className="text-sm text-gray-600">A workflow starts when someone fills in this form, from chat, a public form link, a schedule or a webhook.</p>
+        <p className="text-sm text-muted-strong">A workflow starts when someone fills in this form, from chat, a public form link, a schedule or a webhook.</p>
         {onTriggers && <Button variant="secondary" icon={Clock} onClick={onTriggers}>Schedule, form link or webhook</Button>}
-        <div className="text-xs font-semibold uppercase text-gray-500">Form fields</div>
-        {!fields.length && <p className="text-xs text-gray-400">No fields yet. Add some so people can give the workflow information.</p>}
+        <div className="text-xs font-semibold uppercase text-muted-strong">Form fields</div>
+        {!fields.length && <p className="text-xs text-muted-strong">No fields yet. Add some so people can give the workflow information.</p>}
         {fields.map((f, i) => (
-          <div key={i} className="space-y-1.5 rounded-md border bg-gray-50 p-2">
+          <div key={i} className="space-y-1.5 rounded-md border bg-app p-2">
             <div className="flex gap-1">
               <Input placeholder="Label" value={f.label} maxLength={100} onChange={(e) => {
                 const label = e.target.value;
@@ -789,7 +789,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
                 onRenameField(f.key, key);
                 setFields(fields.map((x, j) => (j === i ? { ...x, label, key } : x)));
               }} />
-              <button type="button" className="p-1 text-gray-400 hover:text-red-600" onClick={() => setFields(fields.filter((_, j) => j !== i))} aria-label="Remove field"><X className="h-4 w-4" /></button>
+              <button type="button" className="p-1 text-muted hover:text-red-600" onClick={() => setFields(fields.filter((_, j) => j !== i))} aria-label="Remove field"><X className="h-4 w-4" /></button>
             </div>
             <div className="flex gap-1">
               <Select value={f.type} onChange={(e) => setFields(fields.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
@@ -800,7 +800,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
             {f.type === 'select' && (
               <Input placeholder="Choices, comma separated" value={(f.options || []).join(', ')} onChange={(e) => setFields(fields.map((x, j) => (j === i ? { ...x, options: e.target.value.split(',').map((s) => s.trim()) } : x)))} />
             )}
-            <p className="font-mono text-[11px] text-gray-400">{`{{input.${f.key}}}`}</p>
+            <p className="font-mono text-[11px] text-muted-strong">{`{{input.${f.key}}}`}</p>
           </div>
         ))}
         <Button variant="secondary" icon={Plus} onClick={() => setFields([...fields, { key: `field_${fields.length + 1}`, label: '', type: 'text', required: false }])}>Add field</Button>
@@ -833,7 +833,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
         {nt && <StepForm nodeType={nt} config={data.config || {}} onChange={(config) => onChange({ config })} groups={loopGroups} agents={agents} credentialTypes={credentialTypes} />}
         {nt && (
           <details className="rounded-md border p-2 text-sm">
-            <summary className="cursor-pointer text-gray-600">If this step fails…</summary>
+            <summary className="cursor-pointer text-muted-strong">If this step fails…</summary>
             <div className="mt-2 space-y-2">
               {isLoop ? (
                 <Checkbox label="If one item fails, keep going with the others" checked={!!settings.item_errors_continue} onChange={(e) => onChange({ settings: { ...settings, item_errors_continue: e.target.checked } })} />
@@ -853,7 +853,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
             </div>
           </details>
         )}
-        {nt?.output_hint && <p className="text-xs text-gray-500">Produces: <code>{isLoop ? '{ results: [...], count }' : nt.output_hint}</code></p>}
+        {nt?.output_hint && <p className="text-xs text-muted-strong">Produces: <code>{isLoop ? '{ results: [...], count }' : nt.output_hint}</code></p>}
       </div>
     );
   }
@@ -871,7 +871,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
           </Select>
         </Field>
         {!['is_empty', 'not_empty'].includes(cond.operator) && <Field label="this value"><VarText value={asText(cond.right)} groups={groups} placeholder="1000" onChange={(v) => set({ right: v })} /></Field>}
-        <p className="text-xs text-gray-500">Connect the green <b>Yes</b> and red <b>No</b> dots to the next steps (selecting this step and adding a new one does it for you).</p>
+        <p className="text-xs text-muted-strong">Connect the green <b>Yes</b> and red <b>No</b> dots to the next steps (selecting this step and adding a new one does it for you).</p>
       </div>
     );
   }
@@ -885,7 +885,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
     return (
       <div className="space-y-3">
         <Field label="Route by this value"><VarText value={data.value || ''} groups={groups} placeholder="{{classify.category}}" onChange={(v) => onChange({ value: v })} /></Field>
-        <div className="text-xs font-semibold uppercase text-gray-500">Paths</div>
+        <div className="text-xs font-semibold uppercase text-muted-strong">Paths</div>
         {cases.map((c, i) => (
           <div key={i} className="flex gap-1">
             <Input value={c} maxLength={60} onChange={(e) => {
@@ -898,7 +898,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
               onRenameCase(c, v);
               onChange({ cases: cases.map((x, j) => (j === i ? v : x)) });
             }} />
-            <button type="button" className="p-1 text-gray-400 hover:text-red-600" onClick={() => { onDropCase(c); onChange({ cases: cases.filter((_, j) => j !== i) }); }} aria-label="Remove path"><X className="h-4 w-4" /></button>
+            <button type="button" className="p-1 text-muted hover:text-red-600" onClick={() => { onDropCase(c); onChange({ cases: cases.filter((_, j) => j !== i) }); }} aria-label="Remove path"><X className="h-4 w-4" /></button>
           </div>
         ))}
         {caseError && <p className="text-xs text-red-600">{caseError}</p>}
@@ -907,7 +907,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
           while (clash(`option ${n}`, -1)) n += 1;
           onChange({ cases: [...cases, `option ${n}`] });
         }}>Add path</Button>
-        <p className="text-xs text-gray-500">Each path gets its own dot under the step; anything else goes to <b>default</b>. Matching ignores upper/lower case.</p>
+        <p className="text-xs text-muted-strong">Each path gets its own dot under the step; anything else goes to <b>default</b>. Matching ignores upper/lower case.</p>
       </div>
     );
   }
@@ -920,7 +920,7 @@ function NodeSettings({ node, catalog, groups, agents, credentialTypes, onChange
     );
   }
 
-  return <p className="text-sm text-gray-500">This is an older step type. It still runs, but cannot be edited here.</p>;
+  return <p className="text-sm text-muted-strong">This is an older step type. It still runs, but cannot be edited here.</p>;
 }
 
 function TestRun({ workflow, fields, onClose, onResult }) {

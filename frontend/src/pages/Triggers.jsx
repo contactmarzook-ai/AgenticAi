@@ -81,7 +81,7 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
     <Modal wide title={`How “${workflow.name}” starts`} onClose={onClose}>
       <div className="space-y-4">
         {!isLive && <Alert kind="info">This workflow is not live yet. Anything you add here starts working once you <b>Publish</b>.</Alert>}
-        <p className="text-sm text-gray-500">People can always run it from the Workflows list or from chat. Add more ways below.</p>
+        <p className="text-sm text-muted-strong">People can always run it from the Workflows list or from chat. Add more ways below.</p>
         {!form && <Alert>{error}</Alert>}
         {secret && (
           <Alert kind="success">
@@ -89,13 +89,13 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
               {secret.type === 'form' ? (
                 <>
                   <div className="font-medium">Share this link. Copy it now - it is shown only once (you can create a new one later).</div>
-                  <code className="block break-all rounded bg-white p-2 text-xs text-gray-800">{formUrl(secret.id, secret.token)}</code>
+                  <code className="block break-all rounded bg-surface p-2 text-xs text-ink">{formUrl(secret.id, secret.token)}</code>
                   <Button variant="secondary" icon={Copy} onClick={() => copy(formUrl(secret.id, secret.token))}>Copy link</Button>
                 </>
               ) : (
                 <>
                   <div className="font-medium">Webhook ready. Copy the token now - it is shown only once.</div>
-                  <code className="block break-all rounded bg-white p-2 text-xs text-gray-800">{secret.token}</code>
+                  <code className="block break-all rounded bg-surface p-2 text-xs text-ink">{secret.token}</code>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="secondary" icon={Copy} onClick={() => copy(secret.token)}>Copy token</Button>
                     <Button variant="secondary" icon={Copy} onClick={() => copy(hookUrl(secret.id))}>Copy URL</Button>
@@ -111,15 +111,15 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
           const K = KINDS[t.type] || KINDS.webhook;
           return (
             <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm">
-              <K.icon className="h-4 w-4 text-gray-500" />
+              <K.icon className="h-4 w-4 text-muted-strong" />
               <span className="font-medium">{t.name}</span>
               <Badge color={t.type === 'schedule' ? 'blue' : t.type === 'form' ? 'green' : 'indigo'}>{K.label}</Badge>
-              {t.type === 'schedule' && <span className="text-xs text-gray-600">{describeCron(t.cron)} ({t.timezone}) · next {formatDate(t.next_run_at)}</span>}
+              {t.type === 'schedule' && <span className="text-xs text-muted-strong">{describeCron(t.cron)} ({t.timezone}) · next {formatDate(t.next_run_at)}</span>}
               {t.type === 'webhook' && (
-                <button className="font-mono text-xs text-indigo-600 hover:underline" onClick={() => copy(hookUrl(t.id))} title="Copy URL">{hookUrl(t.id)}</button>
+                <button className="font-mono text-xs text-brand-600 hover:underline" onClick={() => copy(hookUrl(t.id))} title="Copy URL">{hookUrl(t.id)}</button>
               )}
               {!t.is_enabled && <Badge color="red">paused</Badge>}
-              <span className="text-xs text-gray-400">last run {formatDate(t.last_run_at)}</span>
+              <span className="text-xs text-muted-strong">last run {formatDate(t.last_run_at)}</span>
               <div className="ml-auto flex gap-1">
                 <Button variant="ghost" onClick={() => toggle(t)}>{t.is_enabled ? 'Pause' : 'Resume'}</Button>
                 {t.type !== 'schedule' && <Button variant="ghost" icon={KeyRound} onClick={() => rotate(t)}>{t.type === 'form' ? 'New link' : 'New token'}</Button>}
@@ -131,11 +131,11 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
         })}
 
         {form ? (
-          <div className="space-y-3 rounded-md border bg-gray-50 p-4">
-            <div className="flex items-center gap-2 font-medium text-gray-800">
+          <div className="space-y-3 rounded-md border bg-app p-4">
+            <div className="flex items-center gap-2 font-medium text-ink">
               {(() => { const I = KINDS[form.type].icon; return <I className="h-4 w-4" />; })()} {KINDS[form.type].label}
             </div>
-            <p className="text-xs text-gray-500">{KINDS[form.type].help}</p>
+            <p className="text-xs text-muted-strong">{KINDS[form.type].help}</p>
             <Field label="Name">
               <Input value={form.name} placeholder={KINDS[form.type].label} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
@@ -147,7 +147,7 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
                 </Field>
                 {fields.length > 0 && (
                   <div>
-                    <div className="mb-1 text-xs font-medium text-gray-600">Values to use each time (nobody fills in the form on a schedule)</div>
+                    <div className="mb-1 text-xs font-medium text-muted-strong">Values to use each time (nobody fills in the form on a schedule)</div>
                     <RunForm fields={fields} value={form.input} onChange={(input) => setForm({ ...form, input })} />
                   </div>
                 )}
@@ -162,7 +162,7 @@ export default function Triggers({ workflow, isLive, fields = [], onClose }) {
                 {!fields.length && <Alert kind="info">The Start step has no form fields yet. Add fields to the Start step so the form asks for something.</Alert>}
               </>
             )}
-            {form.type === 'webhook' && <p className="text-xs text-gray-500">The JSON body of each call is used as the form values.</p>}
+            {form.type === 'webhook' && <p className="text-xs text-muted-strong">The JSON body of each call is used as the form values.</p>}
             <div className="flex gap-2">
               {error && <div className="flex-1"><Alert>{error}</Alert></div>}
               <Button onClick={save}>{form.id ? 'Save' : 'Add'}</Button>

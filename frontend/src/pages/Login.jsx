@@ -28,29 +28,30 @@ export default function Login() {
   };
 
   return (
-    <div className="relative flex min-h-screen overflow-hidden bg-[#070b1f]">
+    <div className="relative flex min-h-screen overflow-hidden bg-navy-900">
       {/* Animated stardust: autonomous agents passing work along a flow */}
       <div className="absolute inset-0 lg:right-[480px]">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0b1030] via-[#0a0f2c] to-indigo-950" />
+        <div className="absolute inset-0 bg-gradient-to-b from-navy-800 to-navy-900" />
         <StarDustScene />
         <div className="pointer-events-none absolute inset-x-0 top-0 hidden p-10 lg:block">
           <Logo size="lg" light />
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden p-10 lg:block">
+          <div className="mb-4 h-1 w-12 rounded-full bg-accent" />
           <h2 className="max-w-xl text-3xl font-semibold leading-tight text-white">Autonomous agents.<br />Workflows that run themselves.</h2>
-          <p className="mt-3 max-w-xl text-sm text-indigo-100/80">
+          <p className="mt-3 max-w-xl text-sm text-navy-100">
             Describe what you need in plain words. {APP_NAME} turns it into AI-powered workflows that read, decide and act - on your own models, under your rules.
           </p>
         </div>
       </div>
 
       {/* Sign-in card */}
-      <div className="relative z-10 ml-auto flex w-full items-center justify-center px-4 py-10 lg:w-[480px] lg:bg-white">
-        <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-white p-8 shadow-2xl lg:border-gray-100 lg:shadow-none">
+      <div className="relative z-10 ml-auto flex w-full items-center justify-center px-4 py-10 lg:w-[480px] lg:bg-surface">
+        <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl border border-white/10 bg-surface p-8 shadow-pop lg:border-0 lg:shadow-none">
           <div className="pb-2">
             <div className="mb-6 lg:hidden"><Logo /></div>
-            <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
-            <p className="mt-1 text-sm text-gray-500">Sign in to {APP_NAME}</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-navy">Welcome back</h1>
+            <p className="mt-1 text-sm text-muted-strong">Sign in to {APP_NAME}</p>
           </div>
           {expired && !error && <Alert kind="info">Your session ended. Please sign in again.</Alert>}
           <Alert>{error}</Alert>
@@ -63,7 +64,7 @@ export default function Login() {
           <Button type="submit" loading={loading} className="w-full py-2.5">
             Sign in
           </Button>
-          <p className="text-center text-xs text-gray-400">Accounts are created by your administrator.</p>
+          <p className="text-center text-xs text-muted-strong">Accounts are created by your administrator.</p>
         </form>
       </div>
     </div>

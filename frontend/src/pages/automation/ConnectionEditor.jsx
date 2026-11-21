@@ -46,7 +46,7 @@ export default function ConnectionEditor({ types, existing, onClose, onSaved }) 
             </Select>
           </Field>
         )}
-        {ctype?.help && <p className="text-sm text-gray-500">{ctype.help}</p>}
+        {ctype?.help && <p className="text-sm text-muted-strong">{ctype.help}</p>}
         <Field label="Name" hint="So you can recognise it, e.g. 'Support mailbox'">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
@@ -78,7 +78,7 @@ export default function ConnectionEditor({ types, existing, onClose, onSaved }) 
             <option value="public">Everyone</option>
           </Select>
         </Field>
-        <p className="text-xs text-gray-400">Secrets are encrypted and never displayed again.</p>
+        <p className="text-xs text-muted-strong">Secrets are encrypted and never displayed again.</p>
       </div>
     </Modal>
   );

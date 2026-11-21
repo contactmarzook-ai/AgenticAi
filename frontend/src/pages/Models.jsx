@@ -49,7 +49,7 @@ export default function Models() {
         {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">Providers</h2>
+            <h2 className="font-semibold text-navy">Providers</h2>
             <Button icon={Plus} onClick={() => setProviderForm({ name: '', base_url: 'http://ollama:11434/v1', api_key_env: '', is_active: true })}>
               Add provider
             </Button>
@@ -59,7 +59,7 @@ export default function Models() {
             columns={[
               { key: 'name', label: 'Name' },
               { key: 'base_url', label: 'Base URL', className: 'font-mono text-xs' },
-              { key: 'api_key_env', label: 'API key env var', render: (p) => p.api_key_env || <span className="text-gray-400">none</span> },
+              { key: 'api_key_env', label: 'API key env var', render: (p) => p.api_key_env || <span className="text-muted-strong">none</span> },
               { key: 'is_active', label: 'Status', render: (p) => (p.is_active ? <Badge color="green">active</Badge> : <Badge color="red">disabled</Badge>) },
               {
                 key: 'actions',
@@ -78,7 +78,7 @@ export default function Models() {
 
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">Models</h2>
+            <h2 className="font-semibold text-navy">Models</h2>
             <Button icon={Plus} disabled={!providers.length} onClick={() => setModelForm({ provider_id: providers[0]?.id, model_name: '', display_name: '', supports_tools: true, is_default: false, is_active: true, allowed_roles: [] })}>
               Add model
             </Button>
@@ -104,7 +104,7 @@ export default function Models() {
               },
             ]}
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-strong">
             Agents only get tools when their model supports tool calling. With Ollama, use a tool-capable model such as qwen2.5 or llama3.1 and
             pull it on the Ollama server first (<code>ollama pull qwen2.5:7b-instruct</code>).
           </p>
@@ -176,7 +176,7 @@ function ModelForm({ value, providers, onClose, onSaved }) {
           <Checkbox label="Active" checked={f.is_active} onChange={(e) => setF({ ...f, is_active: e.target.checked })} />
         </div>
         <div>
-          <div className="mb-1 text-xs font-medium text-gray-600">Allowed roles (none ticked = everyone)</div>
+          <div className="mb-1 text-xs font-medium text-muted-strong">Allowed roles (none ticked = everyone)</div>
           <div className="flex gap-4">
             {ROLES.map((r) => <Checkbox key={r} label={r} checked={f.allowed_roles.includes(r)} onChange={() => toggleRole(r)} />)}
           </div>

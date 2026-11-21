@@ -5,10 +5,10 @@ import { Button, PageHeader, Select, Table } from '../lib/ui';
 
 function Stat({ label, value, sub }) {
   return (
-    <div className="rounded-lg border bg-white p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-gray-900">{value}</div>
-      {sub && <div className="text-xs text-gray-500">{sub}</div>}
+    <div className="rounded-lg border bg-surface p-4 shadow-card">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-strong">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-navy">{value}</div>
+      {sub && <div className="text-xs text-muted-strong">{sub}</div>}
     </div>
   );
 }
@@ -54,7 +54,7 @@ export default function Monitoring() {
             <Stat label="Failed sign-ins" value={m.failed_logins} sub="in this window" />
           </div>
           <section>
-            <h2 className="mb-2 font-semibold text-gray-900">Most used</h2>
+            <h2 className="mb-2 font-semibold text-navy">Most used</h2>
             <Table
               rows={m.top_targets.map((t, i) => ({ id: i, ...t }))}
               empty="No runs in this window."

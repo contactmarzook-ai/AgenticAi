@@ -54,7 +54,7 @@ export default function Audit() {
             { key: 'ip_address', label: 'IP' },
           ]}
         />
-        <div className="flex items-center justify-between text-sm text-gray-500">
+        <div className="flex items-center justify-between text-sm text-muted-strong">
           <span>{data.total ? `${offset + 1}–${Math.min(offset + PAGE, data.total)} of ${data.total}` : ''}</span>
           <div className="flex gap-2">
             <Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Previous</Button>

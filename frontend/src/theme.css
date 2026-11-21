@@ -1,20 +1,61 @@
 /*
- * Brand colours. Values are "R G B" triplets (so Tailwind opacity modifiers work).
- * 600 is the main button / active colour; 50-100 are tints for selected items;
- * 700-900 are hover and text-on-light shades.
+ * Star Dust theme: the single source of truth for colour.
  *
- * Current values: the default indigo palette (placeholder until the official
- * brand palette is supplied).
+ * Values are "R G B" channel triplets so Tailwind opacity modifiers work
+ * (e.g. bg-brand-600/20). tailwind.config.js exposes them as semantic names:
+ *   navy    - sidebar, headings, strong hierarchy          (DEFAULT = navy-700 #173B65)
+ *   brand   - primary buttons, links, active nav, focus     (600 = #2466A5, 50 = light blue #EAF2F9)
+ *             ("indigo" in class names is kept as an alias of brand, for older code)
+ *   accent  - orange, used sparingly for one key highlight  (DEFAULT = #F28C28).
+ *             Never as text on white (2.4:1). On an orange fill use navy/ink text.
+ *   app     - page background #F7F9FC        surface - cards, panels #FFFFFF
+ *   ink     - primary text #263445           line    - borders and dividers #E2E8F0
+ *   muted   - secondary #718096. 4.0:1 on white is below WCAG AA for body text, so it is
+ *             used only for icons, placeholders, disabled and decorative marks.
+ *   muted-strong - #556378 (6.1:1 on white, 5.8:1 on app): secondary and helper TEXT.
+ *
+ * NOTE: these are PROPOSED tokens inspired by the Vivriti Capital look. They are NOT
+ * verified official brand values; replace them here once a brand guide is supplied.
+ * Status colours (green success, red failure, blue running, amber queued/warning,
+ * gray disabled) deliberately stay on Tailwind's own palettes so they remain distinct.
  */
 :root {
-  --brand-50: 238 242 255;
-  --brand-100: 224 231 255;
-  --brand-200: 199 210 254;
-  --brand-300: 165 180 252;
-  --brand-400: 129 140 248;
-  --brand-500: 99 102 241;
-  --brand-600: 79 70 229;
-  --brand-700: 67 56 202;
-  --brand-800: 55 48 163;
-  --brand-900: 49 46 129;
+  /* Brand blue (600 = #2466A5) */
+  --brand-50: 234 242 249;   /* #EAF2F9 light blue: subtle fills, selected rows, hover */
+  --brand-100: 213 229 243;  /* #D5E5F3 */
+  --brand-200: 173 203 230;  /* #ADCBE6 */
+  --brand-300: 127 174 214;  /* #7FAED6 */
+  --brand-400: 79 140 196;   /* #4F8CC4 */
+  --brand-500: 52 119 181;   /* #3477B5 */
+  --brand-600: 36 102 165;   /* #2466A5 primary (white text 6.0:1) */
+  --brand-700: 30 86 144;    /* #1E5690 hover, text on light blue (6.7:1) */
+  --brand-800: 25 72 119;    /* #194877 */
+  --brand-900: 23 59 101;    /* #173B65 */
+
+  /* Navy (700 = #173B65) */
+  --navy-50: 238 242 247;    /* #EEF2F7 */
+  --navy-100: 213 222 234;   /* #D5DEEA */
+  --navy-200: 169 188 212;   /* #A9BCD4 secondary text on navy (5.9:1) */
+  --navy-300: 125 151 184;   /* #7D97B8 */
+  --navy-400: 82 113 153;    /* #527199 */
+  --navy-500: 47 84 128;     /* #2F5480 */
+  --navy-600: 31 72 120;     /* #1F4878 hover on navy */
+  --navy-700: 23 59 101;     /* #173B65 primary navy (white text 11.4:1) */
+  --navy-800: 18 47 81;      /* #122F51 */
+  --navy-900: 13 34 59;      /* #0D223B */
+
+  /* Accent orange (500 = #F28C28) */
+  --accent-50: 254 243 231;  /* #FEF3E7 */
+  --accent-100: 253 227 198; /* #FDE3C6 */
+  --accent-500: 242 140 40;  /* #F28C28 (navy text on it 4.6:1, ink 5.2:1) */
+  --accent-600: 222 118 20;  /* #DE7614 hover */
+  --accent-700: 161 88 14;   /* #A1580E text on accent-50 (4.9:1) */
+
+  /* Neutrals */
+  --app: 247 249 252;        /* #F7F9FC */
+  --surface: 255 255 255;    /* #FFFFFF */
+  --ink: 38 52 69;           /* #263445 (12.7:1 on white) */
+  --muted: 113 128 150;      /* #718096 */
+  --muted-strong: 85 99 120; /* #556378 */
+  --line: 226 232 240;       /* #E2E8F0 */
 }

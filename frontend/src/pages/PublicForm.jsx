@@ -38,15 +38,15 @@ export default function PublicForm({ id, token }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-10">
-      <div className="mx-auto max-w-xl rounded-xl border bg-white p-8 shadow-sm">
-        {!form && !error && <p className="text-sm text-gray-500">Loading…</p>}
+    <div className="min-h-screen bg-app px-4 py-10">
+      <div className="mx-auto max-w-xl rounded-lg border bg-surface p-8 shadow-card">
+        {!form && !error && <p className="text-sm text-muted-strong">Loading…</p>}
         {!form && error && <Alert>{error}</Alert>}
         {form && !done && (
           <form onSubmit={submit} className="space-y-4">
-            <h1 className="text-xl font-semibold text-gray-900">{form.title}</h1>
-            {form.intro && <p className="whitespace-pre-wrap text-sm text-gray-600">{form.intro}</p>}
-            {form.fields.length ? <FormFields fields={form.fields} values={values} setValues={setValues} /> : <p className="text-sm text-gray-500">Press Submit to continue.</p>}
+            <h1 className="text-xl font-semibold text-navy">{form.title}</h1>
+            {form.intro && <p className="whitespace-pre-wrap text-sm text-muted-strong">{form.intro}</p>}
+            {form.fields.length ? <FormFields fields={form.fields} values={values} setValues={setValues} /> : <p className="text-sm text-muted-strong">Press Submit to continue.</p>}
             <Alert>{error}</Alert>
             <Button type="submit" loading={sending} className="w-full py-2">Submit</Button>
           </form>
@@ -56,7 +56,7 @@ export default function PublicForm({ id, token }) {
             {done.status === 'failed' ? <Alert>{done.message}</Alert> : (
               <>
                 <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" />
-                <p className="text-gray-800">{done.message}</p>
+                <p className="text-ink">{done.message}</p>
               </>
             )}
             {done.result !== undefined && done.result !== null && <div className="text-left"><ResultView value={done.result} /></div>}
@@ -64,7 +64,7 @@ export default function PublicForm({ id, token }) {
           </div>
         )}
       </div>
-      <p className="mt-4 flex items-center justify-center gap-1 text-xs text-gray-400"><Sparkles className="h-3 w-3" /> Powered by Star Dust</p>
+      <p className="mt-4 flex items-center justify-center gap-1 text-xs text-muted-strong"><Sparkles className="h-3 w-3" /> Powered by Star Dust</p>
     </div>
   );
 }

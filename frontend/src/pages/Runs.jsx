@@ -60,7 +60,7 @@ export default function Runs({ user }) {
             {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </Select></div>
           {filters.group_id && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
+            <span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1 text-sm text-brand-700">
               Only “{groupName || 'this workflow'}”
               <button aria-label="Clear" onClick={() => { setGroupName(''); setFilter('group_id', ''); window.history.replaceState(null, '', '#/runs'); }}>×</button>
             </span>
@@ -80,7 +80,7 @@ export default function Runs({ user }) {
             { key: 'error', label: 'Error', className: 'max-w-xs truncate text-red-600', render: (r) => r.error || '' },
           ]}
         />
-        <div className="flex items-center justify-between text-sm text-gray-500">
+        <div className="flex items-center justify-between text-sm text-muted-strong">
           <span>
             {data.total ? `${offset + 1}–${Math.min(offset + PAGE, data.total)} of ${data.total}` : ''}
           </span>
@@ -93,7 +93,7 @@ export default function Runs({ user }) {
       {detail && (
         <Modal wide title={`Run #${detail.id} · ${detail.target_type} “${detail.target_name}”`} onClose={() => setDetail(null)}>
           <div className="space-y-3 text-sm">
-            <div className="flex flex-wrap gap-3 text-gray-600">
+            <div className="flex flex-wrap gap-3 text-muted-strong">
               <StatusBadge status={detail.status} />
               <span>source: {detail.source}</span>
               {detail.model_name && <span>model: {detail.model_name}</span>}
@@ -115,11 +115,11 @@ export default function Runs({ user }) {
             }}>Run again with the same input</Button>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <div className="mb-1 text-xs text-gray-500">Input</div>
+                <div className="mb-1 text-xs text-muted-strong">Input</div>
                 <JsonBlock value={detail.input} />
               </div>
               <div>
-                <div className="mb-1 text-xs text-gray-500">Output</div>
+                <div className="mb-1 text-xs text-muted-strong">Output</div>
                 <JsonBlock value={detail.output} />
               </div>
             </div>

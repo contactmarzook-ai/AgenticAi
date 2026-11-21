@@ -90,7 +90,7 @@ function UserForm({ value, onClose, onSaved }) {
         </Field>
         <Field label="Department"><Input value={f.department} onChange={(e) => setF({ ...f, department: e.target.value })} /></Field>
         {f.id && <Checkbox label="Active (untick to block sign-in immediately)" checked={f.is_active} onChange={(e) => setF({ ...f, is_active: e.target.checked })} />}
-        {f.id && <p className="text-xs text-gray-500">Changing role or deactivating signs the user out everywhere.</p>}
+        {f.id && <p className="text-xs text-muted-strong">Changing role or deactivating signs the user out everywhere.</p>}
       </div>
     </Modal>
   );

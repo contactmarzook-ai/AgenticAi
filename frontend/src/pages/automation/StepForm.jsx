@@ -50,22 +50,22 @@ function VariableMenu({ groups, onPick }) {
   if (!groups.length) return null;
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-indigo-600 hover:bg-indigo-50" title="Insert data from an earlier step">
+      <button type="button" onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-brand-600 hover:bg-brand-50" title="Insert data from an earlier step">
         <Variable className="h-3.5 w-3.5" /> Insert data
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-y-auto rounded-md border bg-white p-2 shadow-lg">
+        <div className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-y-auto rounded-md border bg-surface p-2 shadow-pop">
           {groups.map((g) => (
             <div key={g.root} className="mb-2">
-              <div className="px-1 text-[11px] font-semibold uppercase text-gray-400">{g.label}</div>
+              <div className="px-1 text-[11px] font-semibold uppercase text-muted-strong">{g.label}</div>
               {g.vars.map((v) => (
-                <button key={v.value} type="button" onClick={() => { onPick(v.value); setOpen(false); }} className="block w-full truncate rounded px-2 py-1 text-left text-sm hover:bg-gray-100">
+                <button key={v.value} type="button" onClick={() => { onPick(v.value); setOpen(false); }} className="block w-full truncate rounded px-2 py-1 text-left text-sm hover:bg-brand-50">
                   {v.label}
                 </button>
               ))}
               <div className="flex gap-1 px-1 pt-1">
                 <input className="w-full rounded border px-1.5 py-0.5 text-xs" placeholder="other field…" value={custom} onChange={(e) => setCustom(e.target.value.replace(/[^\w.-]/g, ''))} />
-                <button type="button" className="text-xs text-indigo-600" onClick={() => { if (custom) { onPick(`{{${g.root}.${custom}}}`); setOpen(false); setCustom(''); } }}>
+                <button type="button" className="text-xs text-brand-600" onClick={() => { if (custom) { onPick(`{{${g.root}.${custom}}}`); setOpen(false); setCustom(''); } }}>
                   add
                 </button>
               </div>
@@ -87,7 +87,7 @@ export function VarText({ value, onChange, groups, multiline, placeholder, rows 
     onChange(text.slice(0, pos) + token + text.slice(pos));
     setTimeout(() => el?.focus(), 0);
   };
-  const cls = 'w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
+  const cls = 'w-full rounded-md border border-line px-2.5 py-1.5 text-sm placeholder:text-muted focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20';
   return (
     <div>
       {groups.length > 0 && (
@@ -114,10 +114,10 @@ function KeyValueEditor({ value, onChange, groups }) {
   return (
     <div className="space-y-2">
       {rows.map(([k, v], i) => (
-        <div key={i} className="rounded border bg-gray-50 p-2">
+        <div key={i} className="rounded border bg-app p-2">
           <div className="mb-1 flex items-center gap-1">
             <input className="flex-1 rounded border px-2 py-1 font-mono text-xs" value={k} onChange={(e) => update(i, e.target.value.replace(/\s/g, '_'), v)} />
-            <button type="button" onClick={() => onChange(Object.fromEntries(rows.filter((_, j) => j !== i)))} className="p-1 text-gray-400 hover:text-red-600" aria-label="Remove">
+            <button type="button" onClick={() => onChange(Object.fromEntries(rows.filter((_, j) => j !== i)))} className="p-1 text-muted hover:text-red-600" aria-label="Remove">
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -141,7 +141,7 @@ function JsonField({ value, onChange }) {
     <div>
       <textarea
         rows={5}
-        className={cx('w-full rounded-md border px-2.5 py-1.5 font-mono text-xs', bad ? 'border-red-400' : 'border-gray-300')}
+        className={cx('w-full rounded-md border px-2.5 py-1.5 font-mono text-xs', bad ? 'border-red-400' : 'border-line')}
         value={text}
         placeholder='{"name": "{{input.name}}"}'
         onChange={(e) => {
@@ -245,7 +245,7 @@ export default function StepForm({ nodeType, config, onChange, groups, agents, c
             input = (
               <textarea
                 rows={4}
-                className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
+                className="w-full rounded-md border border-line px-2.5 py-1.5 text-sm"
                 placeholder="one per line"
                 value={Array.isArray(value) ? value.join('\n') : value}
                 onChange={(e) => set(f.key, e.target.value.split('\n'))}

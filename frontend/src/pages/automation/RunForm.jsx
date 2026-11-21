@@ -31,7 +31,7 @@ export default function RunForm({ fields, value, onChange, hideJson }) {
           />
         </Field>
         {fields?.length > 0 && (
-          <button type="button" className="text-xs text-indigo-600 hover:underline" onClick={() => setRaw(false)}>
+          <button type="button" className="text-xs text-brand-600 hover:underline" onClick={() => setRaw(false)}>
             Back to the form
           </button>
         )}
@@ -65,7 +65,7 @@ export default function RunForm({ fields, value, onChange, hideJson }) {
         );
       })}
       {!hideJson && (
-        <button type="button" className="text-xs text-gray-500 hover:underline" onClick={() => { setText(JSON.stringify(value || {}, null, 2)); setRaw(true); }}>
+        <button type="button" className="text-xs text-muted-strong hover:underline" onClick={() => { setText(JSON.stringify(value || {}, null, 2)); setRaw(true); }}>
           Edit as JSON
         </button>
       )}

@@ -107,14 +107,14 @@ export default function SchedulePicker({ cron, onChange }) {
                   if (on && days.length === 1) return; // at least one day stays selected
                   update({ days: on ? days.filter((d) => d !== v) : [...days, v] });
                 }}
-                className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'text-gray-600'}`}>
+                className={`rounded-full border px-2.5 py-1 text-xs ${on ? 'border-brand-500 bg-brand-50 text-brand-700' : 'text-muted-strong'}`}>
                 {label}
               </button>
             );
           })}
         </div>
       )}
-      <p className="text-xs text-gray-500">{describeCron(toCron(s))}</p>
+      <p className="text-xs text-muted-strong">{describeCron(toCron(s))}</p>
     </div>
   );
 }
