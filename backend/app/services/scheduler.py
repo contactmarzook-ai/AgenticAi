@@ -20,7 +20,7 @@ from ..models import Trigger, User, Workflow
 from ..rbac import can_view, has_permission
 from .form_input import check_input
 from .platform_settings import get_settings
-from .runs import create_run, execute_run, fail_stale_runs, purge_old_runs
+from .runs import create_run, purge_old_runs, submit_run
 
 logger = logging.getLogger("agentos.scheduler")
 
@@ -50,7 +50,7 @@ def active_version(db: Session, group_id: str) -> Optional[Workflow]:
     return db.query(Workflow).filter(Workflow.group_id == group_id, Workflow.status == "active").first()
 
 
-def start_trigger_run(db: Session, trigger: Trigger, input_data: dict, source: str):
+def start_trigger_run(db: Session, trigger: Trigger, input_data: dict, source: str, hold: bool = False):
     """Create a run for the trigger's active workflow version, as the trigger owner. Returns the Run or None."""
     wf = active_version(db, trigger.workflow_group_id)
     if wf is None:
@@ -77,7 +77,7 @@ def start_trigger_run(db: Session, trigger: Trigger, input_data: dict, source: s
         run.finished_at = utcnow()
         db.commit()
         return None
-    return create_run(db, target=wf, user=owner, source=source, input_data=cleaned, trigger_id=trigger.id)
+    return create_run(db, target=wf, user=owner, source=source, input_data=cleaned, trigger_id=trigger.id, hold=hold)
 
 
 class InputProblem(Exception):
@@ -114,7 +114,8 @@ def tick(db: Session) -> int:
         db.refresh(trig)
         run = start_trigger_run(db, trig, dict(trig.input or {}), "schedule")
         if run is not None:
-            execute_run(run.id)
+            # Queued, not run here: a slow workflow must not hold up other schedules (debt A8).
+            submit_run(run.id)
             started += 1
     return started
 
@@ -132,7 +133,6 @@ def main(poll_seconds: int = 20) -> None:
             n = tick(db)
             if n:
                 logger.info("Started %d scheduled run(s)", n)
-            fail_stale_runs(db)
             if time.monotonic() - last_purge > 3600:
                 last_purge = time.monotonic()
                 purged = purge_old_runs(db, int(get_settings(db, fresh=True).get("run_retention_days") or 0))

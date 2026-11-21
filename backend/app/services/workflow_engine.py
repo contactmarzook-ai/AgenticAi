@@ -16,15 +16,21 @@ Node types:
 Variables: {{input.field}}, {{<node id>.field}}, {{<node id>.a.b.0}}. A field consisting of a
 single variable keeps the value's type (numbers stay numbers, lists stay lists).
 
-A node runs once all its predecessors are finished, if at least one incoming branch was taken;
-otherwise it is skipped (and so are nodes reachable only through it).
+Each step is PENDING -> RUNNING -> SUCCESS / FAILED / SKIPPED (or CANCELLED). A step runs once ALL
+its predecessors have finished, if at least one incoming branch was taken; otherwise it is skipped
+(and so are steps reachable only through it). Independent steps can run in parallel; every state
+change is saved through a store, so an interrupted run resumes from its finished steps.
 
-Per-node settings (data.settings): retries (0-5), retry_delay_seconds, continue_on_error.
+Per-node settings (data.settings): retries (0-5), retry_delay_seconds, retry_backoff
+("fixed" | "exponential"), timeout_seconds, continue_on_error.
 """
 
 import json
 import re
+import threading
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any, Callable, Optional
 
 from ..config import settings
@@ -234,14 +240,91 @@ def _branch_taken(src_node: dict, src_output: dict, edge: dict) -> bool:
     return True
 
 
-def _settings(data: dict) -> tuple[int, float, bool]:
-    s = data.get("settings") or {}
+# ---------------- execution ----------------
+PENDING, RUNNING, SUCCESS, FAILED, SKIPPED, CANCELLED = (
+    "pending",
+    "running",
+    "success",
+    "failed",
+    "skipped",
+    "cancelled",
+)
+TERMINAL = {SUCCESS, FAILED, SKIPPED, CANCELLED}
+
+
+class MemoryStore:
+    """Keeps step records in memory. The run service uses a database-backed store with the same
+    two methods, which makes every state change a durable checkpoint."""
+
+    def __init__(self):
+        self.records: dict[str, dict] = {}
+
+    def load(self) -> dict[str, dict]:
+        return {k: dict(v) for k, v in self.records.items()}
+
+    def save(self, record: dict) -> None:
+        self.records[record["node_id"]] = dict(record)
+
+
+class Cancelled(Exception):
+    pass
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _settings(data: dict) -> dict:
+    s = data.get("settings") if isinstance(data.get("settings"), dict) else {}
     try:
         retries = max(0, min(int(s.get("retries") or 0), 5))
         delay = max(0.0, min(float(s.get("retry_delay_seconds") or 1), 60.0))
+        timeout = max(0.0, min(float(s.get("timeout_seconds") or 0), 3600.0))
     except (TypeError, ValueError):
-        retries, delay = 0, 1.0
-    return retries, delay, bool(s.get("continue_on_error"))
+        retries, delay, timeout = 0, 1.0, 0.0
+    return {
+        "retries": retries,
+        "delay": delay,
+        "backoff": "exponential" if s.get("retry_backoff") == "exponential" else "fixed",
+        "timeout": timeout,
+        "continue_on_error": bool(s.get("continue_on_error")),
+    }
+
+
+_attempt_pool = ThreadPoolExecutor(max_workers=16, thread_name_prefix="step")
+
+
+def _call_with_timeout(fn, timeout: float, message: str = ""):
+    """Run one attempt; with a timeout the attempt runs in a helper thread and is abandoned when
+    it takes too long (Python threads cannot be killed - the result is simply ignored)."""
+    if not timeout:
+        return fn()
+    fut = _attempt_pool.submit(fn)
+    try:
+        return fut.result(timeout=timeout)
+    except FutureTimeout:
+        raise WorkflowError(message or f"Step timed out after {timeout:g}s") from None
+
+
+def _graph(definition: Any) -> tuple[list[dict], list[dict]]:
+    """Defensive read of a definition: malformed parts raise WorkflowError, never TypeError."""
+    if not isinstance(definition, dict):
+        raise WorkflowError("The workflow is not in a valid format")
+    nodes, edges = definition.get("nodes"), definition.get("edges") or []
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        raise WorkflowError("The workflow is not in a valid format")
+    clean_nodes, seen = [], set()
+    for n in nodes:
+        if not isinstance(n, dict) or not isinstance(n.get("id"), str) or not n["id"]:
+            raise WorkflowError("A step is malformed (missing id)")
+        if n["id"] in seen:
+            raise WorkflowError(f"Two steps have the same id '{n['id']}'")
+        seen.add(n["id"])
+        clean_nodes.append({**n, "data": n.get("data") if isinstance(n.get("data"), dict) else {}})
+    clean_edges = [e for e in edges if isinstance(e, dict) and e.get("source") in seen and e.get("target") in seen]
+    return clean_nodes, clean_edges
 
 
 def run_definition(
@@ -251,98 +334,279 @@ def run_definition(
     call_tool: ToolCaller,
     call_action: Optional[ActionCaller] = None,
     timeout_seconds: Optional[int] = None,
+    *,
+    store=None,
+    max_parallel: int = 1,
+    should_cancel: Optional[Callable[[], bool]] = None,
+    on_change: Optional[Callable[[dict], None]] = None,
 ) -> dict:
-    """Execute a workflow definition. Returns {"output": ..., "steps": [...]}; raises WorkflowError on failure."""
-    nodes = definition.get("nodes") or []
-    edges = definition.get("edges") or []
+    """Execute a workflow definition. Returns {"output": ..., "steps": [...]}.
+
+    Every step moves PENDING -> RUNNING -> SUCCESS / FAILED / SKIPPED (or CANCELLED). A step runs
+    only when ALL its predecessors have finished and at least one incoming branch was taken;
+    otherwise it is skipped. Up to `max_parallel` independent steps run at the same time. Each
+    change is saved to `store`, and steps already finished in `store` are not run again (resume).
+    Raises WorkflowError on failure, timeout or cancellation (with the steps so far)."""
+    nodes, edges = _graph(definition)
     if not nodes:
         raise WorkflowError("Workflow has no steps")
     if len(nodes) > settings.workflow_max_nodes:
         raise WorkflowError(f"Workflow exceeds the {settings.workflow_max_nodes}-step limit")
-
+    order = topological_order(nodes, edges)
+    seq = {nid: i for i, nid in enumerate(order)}
     by_id = {n["id"]: n for n in nodes}
     incoming: dict[str, list[dict]] = {nid: [] for nid in by_id}
     for e in edges:
-        if e.get("target") in incoming and e.get("source") in by_id:
-            incoming[e["target"]].append(e)
-
-    deadline = time.monotonic() + (timeout_seconds or settings.workflow_timeout_seconds)
-    outputs: dict[str, Any] = {}
-    state: dict[str, str] = {}
-    steps: list[dict] = []
-    final_output: Any = None
-    last_output: Any = None
+        incoming[e["target"]].append(e)
     workflow_input = workflow_input if isinstance(workflow_input, dict) else {"value": workflow_input}
     branching_ids = frozenset(n["id"] for n in nodes if n.get("type") in BRANCHING)
+    deadline = time.monotonic() + (timeout_seconds or settings.workflow_timeout_seconds)
+    store = store if store is not None else MemoryStore()
+    cancel = should_cancel or (lambda: False)
+    lock = threading.Lock()
 
-    for node_id in topological_order(nodes, edges):
-        node = by_id[node_id]
-        ntype = node.get("type")
-        data = node.get("data") or {}
-        label = data.get("label") or ntype
-
-        taken_from = []
-        for e in incoming[node_id]:
-            src = e["source"]
-            if state.get(src) == "done" and _branch_taken(by_id[src], outputs.get(src) or {}, e):
-                taken_from.append(src)
-        if incoming[node_id] and not taken_from:
-            state[node_id] = "skipped"
-            steps.append({"node_id": node_id, "type": ntype, "label": label, "status": "skipped"})
+    # ---- state, restored from checkpoints ----
+    records: dict[str, dict] = {}
+    saved = store.load()
+    for nid in order:
+        node = by_id[nid]
+        data = node["data"]
+        rec = saved.get(nid)
+        if (
+            rec
+            and rec.get("status") in (SUCCESS, SKIPPED)
+            or (rec and rec.get("status") == FAILED and rec.get("continued"))
+        ):
+            records[nid] = dict(rec)
             continue
+        # Not finished (or interrupted while running): (re)starts from pending.
+        records[nid] = {
+            "node_id": nid,
+            "seq": seq[nid],
+            "type": node.get("type"),
+            "label": data.get("label") or node.get("type"),
+            "action": data.get("action"),
+            "status": PENDING,
+            "continued": False,
+            "attempts": 0,
+            "input": None,
+            "output": None,
+            "error": None,
+            "logs": (rec or {}).get("logs") or [],
+            "started_at": None,
+            "finished_at": None,
+        }
+        if rec and rec.get("status") == RUNNING:
+            records[nid]["logs"] = records[nid]["logs"] + [f"{_now_iso()} resumed after an interruption"]
+        store.save(records[nid])
 
-        if time.monotonic() > deadline:
-            raise WorkflowError("Workflow exceeded its time limit", steps)
+    def save(rec: dict) -> None:
+        store.save(rec)
+        if on_change:
+            on_change(rec)
 
-        step = {"node_id": node_id, "type": ntype, "label": label, "action": data.get("action")}
-        retries, delay, continue_on_error = _settings(data)
-        attempt = 0
+    def outputs_snapshot() -> dict:
+        with lock:
+            return {
+                nid: r["output"]
+                for nid, r in records.items()
+                if r["status"] == SUCCESS or (r["status"] == FAILED and r["continued"])
+            }
+
+    def last_output_before(nid: str):
+        """Output of the latest finished non-decision step before `nid` in dependency order."""
+        best = None
+        for other in order[: seq[nid]]:
+            r = records[other]
+            if (
+                r["status"] == SUCCESS
+                and by_id[other].get("type") not in BRANCHING
+                and by_id[other].get("type") != "end"
+            ):
+                best = r["output"]
+        return best
+
+    def taken_sources(nid: str) -> list[str]:
+        taken = []
+        for e in incoming[nid]:
+            src = records[e["source"]]
+            done = src["status"] == SUCCESS or (src["status"] == FAILED and src["continued"])
+            if done and _branch_taken(by_id[e["source"]], src["output"] or {}, e) and e["source"] not in taken:
+                taken.append(e["source"])
+        return taken
+
+    def run_step(nid: str, taken_from: list[str]) -> None:
+        """Runs in a worker thread: one step with its retry policy and timeout."""
+        node = by_id[nid]
+        data = node["data"]
+        rec = records[nid]
+        policy = _settings(data)
         started = time.monotonic()
-
+        attempt = 0
         while True:
             attempt += 1
+            rec["attempts"] = attempt
+            step: dict = {}
+            outputs = outputs_snapshot()
+            last = last_output_before(nid)
             try:
-                out = _execute_node(
-                    ntype,
-                    data,
-                    outputs,
-                    workflow_input,
-                    taken_from,
-                    call_agent,
-                    call_tool,
-                    call_action,
-                    node,
-                    step,
-                    branching_ids,
-                    last_output,
-                    deadline,
+                if cancel():
+                    raise Cancelled()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise WorkflowError("Workflow exceeded its time limit")
+                limit = min(policy["timeout"] or remaining, remaining)
+                out = _call_with_timeout(
+                    lambda outputs=outputs, step=step, last=last: _execute_node(
+                        node.get("type"),
+                        data,
+                        outputs,
+                        workflow_input,
+                        taken_from,
+                        call_agent,
+                        call_tool,
+                        call_action,
+                        node,
+                        step,
+                        branching_ids,
+                        last,
+                        deadline,
+                    ),
+                    limit if (policy["timeout"] or remaining < 3600) else 0,
+                    "" if policy["timeout"] and policy["timeout"] < remaining else "Workflow exceeded its time limit",
                 )
+                rec.update(status=SUCCESS, output=out, input=step.get("input"), error=None)
+                break
+            except Cancelled:
+                rec.update(status=CANCELLED, error="Cancelled", input=step.get("input"))
                 break
             except Exception as exc:  # noqa: BLE001 - every failure is reported on the step
-                if attempt <= retries and time.monotonic() + delay < deadline:
-                    time.sleep(delay)
-                    continue
                 message = str(exc) or exc.__class__.__name__
-                step.update(error=message, attempts=attempt, duration_ms=int((time.monotonic() - started) * 1000))
-                if continue_on_error:
-                    out = {"error": message}
-                    step["status"] = "error_continued"
-                    break
-                step["status"] = "failed"
-                steps.append(step)
-                raise WorkflowError(f"Step '{label}' failed: {message}", steps) from exc
+                rec["logs"] = rec["logs"] + [f"{_now_iso()} attempt {attempt} failed: {message[:500]}"]
+                wait = policy["delay"] * (2 ** (attempt - 1) if policy["backoff"] == "exponential" else 1)
+                if attempt <= policy["retries"] and time.monotonic() + wait < deadline and not cancel():
+                    save(rec)  # record the failed attempt before waiting
+                    end_wait = time.monotonic() + wait
+                    while time.monotonic() < end_wait and not cancel():
+                        time.sleep(min(0.2, end_wait - time.monotonic()))
+                    continue
+                rec.update(status=FAILED, error=message, input=step.get("input"))
+                if policy["continue_on_error"]:
+                    rec.update(continued=True, output={"error": message})
+                break
+        rec["finished_at"] = _now_iso()
+        rec["duration_ms"] = int((time.monotonic() - started) * 1000)
+        save(rec)
 
-        outputs[node_id] = out
-        state[node_id] = "done"
+    # ---- scheduler loop ----
+    pool = ThreadPoolExecutor(max_workers=max(1, max_parallel), thread_name_prefix="node") if max_parallel > 1 else None
+    running: dict = {}
+    failure: Optional[str] = None
+    cancelled = False
+    try:
+        while True:
+            if not cancelled and cancel():
+                cancelled = True
+            if failure is None and not cancelled and time.monotonic() > deadline:
+                failure = "Workflow exceeded its time limit"
+            if failure is None and not cancelled:
+                for nid in order:
+                    rec = records[nid]
+                    if rec["status"] != PENDING:
+                        continue
+                    preds = [e["source"] for e in incoming[nid]]
+                    if any(records[p]["status"] not in TERMINAL for p in preds):
+                        continue
+                    taken = taken_sources(nid)
+                    if preds and not taken:
+                        rec.update(status=SKIPPED, finished_at=_now_iso())
+                        save(rec)
+                        continue
+                    rec.update(status=RUNNING, started_at=_now_iso())
+                    save(rec)
+                    if pool is None:
+                        run_step(nid, taken)
+                        break  # re-scan from the start: keeps strict dependency order
+                    running[pool.submit(run_step, nid, taken)] = nid
+                    if len(running) >= max_parallel:
+                        break
+            # Collect finished parallel steps.
+            if running:
+                done, _ = wait(list(running), timeout=0.5, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    running.pop(fut)
+                    fut.result()  # run_step never raises; surface programming errors
+            for rec in records.values():
+                if rec["status"] == FAILED and not rec["continued"] and failure is None:
+                    failure = f"Step '{rec['label']}' failed: {rec['error']}"
+                if rec["status"] == CANCELLED:
+                    cancelled = True
+            if running:
+                continue
+            pending_ready = failure is None and not cancelled and any(r["status"] == PENDING for r in records.values())
+            if not pending_ready:
+                break
+            if pool is None and not any(
+                r["status"] == PENDING
+                and all(records[e["source"]]["status"] in TERMINAL for e in incoming[r["node_id"]])
+                for r in records.values()
+            ):
+                break
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=True)
+
+    # Steps that never started: skipped after a failure, cancelled after a cancellation.
+    for rec in records.values():
+        if rec["status"] == PENDING:
+            rec.update(
+                status=CANCELLED if cancelled else SKIPPED,
+                error=None if cancelled else ("Not run: an earlier step failed" if failure else None),
+                finished_at=_now_iso(),
+            )
+            save(rec)
+
+    steps = [_as_step(records[nid]) for nid in order]
+    if cancelled:
+        raise WorkflowError("Run was cancelled", steps)
+    if failure:
+        raise WorkflowError(failure, steps)
+
+    final_output, last = None, None
+    for nid in order:
+        r = records[nid]
+        if r["status"] != SUCCESS:
+            continue
+        ntype = by_id[nid].get("type")
         if ntype == "end":
-            final_output = out
+            final_output = r["output"]
         elif ntype not in BRANCHING:
-            last_output = out
-        step.setdefault("status", "success")
-        step.update(output=out, attempts=attempt, duration_ms=int((time.monotonic() - started) * 1000))
-        steps.append(step)
+            last = r["output"]
+    return {"output": final_output if final_output is not None else last, "steps": steps}
 
-    return {"output": final_output if final_output is not None else last_output, "steps": steps}
+
+_STEP_STATUS = {
+    SUCCESS: "success",
+    FAILED: "failed",
+    SKIPPED: "skipped",
+    CANCELLED: "cancelled",
+    PENDING: "pending",
+    RUNNING: "running",
+}
+
+
+def _as_step(rec: dict) -> dict:
+    """The run-history view of a step record (the shape the UI and older runs use)."""
+    status = "error_continued" if rec["status"] == FAILED and rec.get("continued") else _STEP_STATUS[rec["status"]]
+    step = {"node_id": rec["node_id"], "type": rec["type"], "label": rec["label"], "status": status}
+    if rec.get("action"):
+        step["action"] = rec["action"]
+    for key in ("input", "output", "error", "attempts", "duration_ms", "started_at", "finished_at"):
+        if rec.get(key) not in (None, ""):
+            step[key] = rec[key]
+    if rec.get("logs"):
+        step["logs"] = rec["logs"]
+    return step
 
 
 MAX_LOOP_ITEMS = 200

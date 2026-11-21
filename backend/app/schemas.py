@@ -249,6 +249,8 @@ class WorkflowOut(ORM):
     visibility: str
     department: Optional[str]
     owner_id: Optional[int]
+    published_at: Optional[datetime] = None
+    published_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     can_edit: bool = False
@@ -257,6 +259,11 @@ class WorkflowOut(ORM):
 class WorkflowRunRequest(BaseModel):
     input: dict[str, Any] = {}
     from_form: bool = False  # started from the web form (shown as such in History)
+
+
+class DefinitionCheckIn(BaseModel):
+    definition: Any
+    workflow_id: Optional[int] = None
 
 
 class ValidationOut(BaseModel):
@@ -284,6 +291,27 @@ class RunOut(ORM):
     user_id: Optional[int]
     trigger_id: Optional[int]
     created_at: datetime
+    started_at: Optional[datetime]
+    finished_at: Optional[datetime]
+    cancel_requested: bool = False
+    resume_count: int = 0
+    # Live per-step state of a workflow run (updated while it runs).
+    nodes: list["RunNodeOut"] = []
+
+
+class RunNodeOut(ORM):
+    node_id: str
+    seq: int
+    type: str
+    label: str
+    action: Optional[str]
+    status: str
+    continued: bool
+    attempts: int
+    input: Optional[Any] = None
+    output: Optional[Any] = None
+    error: Optional[str]
+    logs: list = []
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
 

@@ -148,7 +148,9 @@ def test_tool_node_and_failure_reporting():
     with pytest.raises(WorkflowError) as exc:
         run_definition(definition, {"expr": "1/0"}, no_agent, tool_fn)
     assert "Division by zero" in str(exc.value)
-    assert exc.value.steps[-1]["status"] == "failed"
+    by_node = {st["node_id"]: st for st in exc.value.steps}
+    assert by_node["calc"]["status"] == "failed"
+    assert by_node["end"]["status"] == "skipped" and "earlier step failed" in by_node["end"]["error"]
 
 
 def test_cycle_rejected():

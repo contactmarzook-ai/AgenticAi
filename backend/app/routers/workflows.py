@@ -8,7 +8,15 @@ from ..audit import audit
 from ..database import get_db
 from ..models import AuditLog, Run, Trigger, User, Workflow
 from ..rbac import can_edit, can_view, has_permission, is_admin, require_permission, visible_filter
-from ..schemas import GenerateRequest, RunOut, ValidationOut, WorkflowIn, WorkflowOut, WorkflowRunRequest
+from ..schemas import (
+    DefinitionCheckIn,
+    GenerateRequest,
+    RunOut,
+    ValidationOut,
+    WorkflowIn,
+    WorkflowOut,
+    WorkflowRunRequest,
+)
 from ..services.ai_builder import BuilderError
 from ..services.ai_builder import generate as ai_generate
 from ..services.blueprint import to_definition
@@ -181,6 +189,23 @@ def delete_draft(
     return {"status": "deleted"}
 
 
+@router.post("/validate-definition", response_model=ValidationOut)
+def validate_unsaved(
+    body: DefinitionCheckIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow:write")),
+):
+    """Check a definition that is not saved yet (the builder calls this while you edit).
+    Agents and connections are checked with the caller's access, or the owner's for an
+    existing workflow the caller can edit."""
+    owner = user
+    if body.workflow_id is not None:
+        wf = _get_visible(db, body.workflow_id, user)
+        owner = _owner(db, wf) or user
+    errors = validate_definition(body.definition, db, owner=owner)
+    return ValidationOut(is_valid=not errors, errors=errors, warnings=reference_problems(body.definition)[1])
+
+
 @router.post("/{workflow_id}/validate", response_model=ValidationOut)
 def validate(
     workflow_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("workflow:read"))
@@ -220,6 +245,9 @@ def activate(
     for old in previous:
         old.status = "archived"
     wf.status = "active"
+    if wf.published_at is None:  # from now on this version is immutable
+        wf.published_at = datetime.now(timezone.utc)
+        wf.published_by = user.id
     audit(
         db,
         "workflow.activate",
@@ -257,8 +285,10 @@ def test(
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("workflow:write")),
+    background: bool = False,
 ):
-    """Run any version (including drafts) synchronously, for builders."""
+    """Run any version (including drafts), for builders. Synchronous by default; with
+    `?background=true` it returns at once and the builder follows GET /api/runs/{id}."""
     wf = _get_visible(db, workflow_id, user)
     _require_edit(user, wf)
     errors = validate_definition(wf.definition, db, owner=_owner(db, wf))
@@ -266,7 +296,21 @@ def test(
         raise HTTPException(status_code=400, detail={"message": "Validation failed", "errors": errors})
     data = _checked_input(wf, body.input)
     enforce_rate_limit(db, user)
-    run = create_run(db, target=wf, user=user, source="test", input_data=data)
+    if background:
+        run = create_run(db, target=wf, user=user, source="test", input_data=data)
+        audit(
+            db,
+            "workflow.test",
+            user=user,
+            resource_type="workflow",
+            resource_id=wf.id,
+            details={"run_id": run.id, "background": True},
+            request=request,
+        )
+        submit_run(run.id)
+        db.refresh(run)
+        return run
+    run = create_run(db, target=wf, user=user, source="test", input_data=data, hold=True)
     execute_run(run.id)
     db.expire_all()
     run = db.get(Run, run.id)
@@ -291,10 +335,22 @@ def run(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("workflow:run")),
 ):
-    """Start an active workflow in the background. Poll GET /api/runs/{id} for the result."""
+    """Start a published version in the background. Poll GET /api/runs/{id} for the result.
+
+    Normally the live (active) version; an earlier published version can be run explicitly by
+    its id (it is immutable, and is re-checked first because its agents or connections may have
+    changed since)."""
     wf = _get_visible(db, workflow_id, user)
     if wf.status != "active":
-        raise HTTPException(status_code=409, detail="Only the active version of a workflow can be run")
+        if wf.published_at is None:
+            raise HTTPException(status_code=409, detail="This version was never published, so it cannot be run")
+        if not has_permission(user, "workflow:write"):
+            raise HTTPException(status_code=403, detail="Only builders can run an earlier version")
+        errors = validate_definition(wf.definition, db, owner=_owner(db, wf))
+        if errors:
+            raise HTTPException(
+                status_code=409, detail={"message": "This earlier version is no longer valid", "errors": errors}
+            )
     data = _checked_input(wf, body.input)
     enforce_rate_limit(db, user)
     run_row = create_run(db, target=wf, user=user, source="form" if body.from_form else "api", input_data=data)
@@ -421,6 +477,44 @@ def duplicate(
     )
     db.refresh(wf)
     return _out(wf, user)
+
+
+@router.get("/groups/{group_id}/versions")
+def version_history(
+    group_id: str, db: Session = Depends(get_db), user: User = Depends(require_permission("workflow:read"))
+):
+    """Every version of a workflow (newest first) with its state and run counts."""
+    versions = (
+        db.query(Workflow)
+        .filter(Workflow.group_id == group_id, Workflow.org_id == user.org_id)
+        .order_by(Workflow.version.desc())
+        .all()
+    )
+    if not versions or not can_view(user, versions[0]):
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    ids = [v.id for v in versions]
+    counts: dict[int, dict] = {}
+    for target_id, status, n in (
+        db.query(Run.target_id, Run.status, func.count())
+        .filter(Run.target_type == "workflow", Run.target_id.in_(ids))
+        .group_by(Run.target_id, Run.status)
+    ):
+        counts.setdefault(target_id, {})[status] = n
+    return [
+        {
+            "id": v.id,
+            "version": v.version,
+            "status": v.status,
+            "published": v.published_at is not None,
+            "published_at": v.published_at,
+            "published_by": v.published_by,
+            "created_at": v.created_at,
+            "updated_at": v.updated_at,
+            "runs": counts.get(v.id, {}),
+        }
+        for v in versions
+        if _listable(user, v) or v.published_at is not None
+    ]
 
 
 @router.delete("/groups/{group_id}")

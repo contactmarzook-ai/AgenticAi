@@ -49,6 +49,12 @@ def create_app() -> FastAPI:
     finally:
         db.close()
 
+    if settings.run_worker_enabled:
+        # Pick up queued runs and resume runs interrupted by a restart (no-op when polling is off).
+        from .services.runs import worker
+
+        worker.start_polling()
+
     app = FastAPI(
         title="Star Dust",
         version="1.0.0",

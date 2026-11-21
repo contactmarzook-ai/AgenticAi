@@ -247,7 +247,7 @@ def run_agent_endpoint(
             },
         ) from None
     enforce_rate_limit(db, user)
-    run = create_run(db, target=agent, user=user, source="api", input_data={"input": value})
+    run = create_run(db, target=agent, user=user, source="api", input_data={"input": value}, hold=True)
     execute_run(run.id)
     db.expire_all()
     run = db.get(Run, run.id)

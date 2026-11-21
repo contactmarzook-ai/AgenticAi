@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 
 from app.database import SessionLocal
@@ -62,6 +63,11 @@ def test_tick_fires_due_trigger_once(client, admin, llm):
     assert tick(db) == 1
     assert tick(db) == 0  # already advanced
     run = db.query(Run).filter(Run.trigger_id == trig["id"]).one()
+    for _ in range(100):  # the schedule queues the run; the worker executes it
+        db.refresh(run)
+        if run.status not in ("queued", "running"):
+            break
+        time.sleep(0.05)
     assert run.status == "succeeded" and run.source == "schedule"
     db.close()
 

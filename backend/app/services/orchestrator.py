@@ -202,7 +202,7 @@ def handle_message(db: Session, session: ChatSession, user: User, text: str) -> 
                 "Run it from Workflows to fill in its form.",
                 meta,
             )
-    run = create_run(db, target=target, user=user, source="chat", input_data=run_input)
+    run = create_run(db, target=target, user=user, source="chat", input_data=run_input, hold=True)
     execute_run(run.id)
     db.expire_all()
     run = db.get(Run, run.id)

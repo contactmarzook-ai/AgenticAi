@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from sqlalchemy import (
     JSON,
@@ -145,8 +145,12 @@ class Workflow(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     name: Mapped[str] = mapped_column(String(200), index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)  # draft | active | archived
+    # draft | active (= the published version that runs) | archived. A version is immutable once
+    # published (published_at is set); archived versions with published_at can still be run explicitly.
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
     definition: Mapped[dict] = mapped_column(JSON, default=dict)  # {"nodes": [...], "edges": [...]}
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     trigger_keywords: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     visibility: Mapped[str] = mapped_column(String(20), default="department")
     department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
@@ -169,7 +173,7 @@ class Run(Base):
     source: Mapped[str] = mapped_column(String(20), default="api")  # chat | api | test | schedule | webhook
     status: Mapped[str] = mapped_column(
         String(20), default="queued", index=True
-    )  # queued | running | succeeded | failed
+    )  # queued | running | succeeded | failed | cancelled
     input: Mapped[dict] = mapped_column(JSON, default=dict)
     output: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     steps: Mapped[list] = mapped_column(JSON, default=list)
@@ -185,6 +189,44 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Durable execution: the worker holding the run renews heartbeat_at; a run whose heartbeat
+    # stopped (pod restarted) is taken over and resumed from its saved step results.
+    worker_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    heartbeat_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resume_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+    nodes: Mapped[List["RunNode"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="RunNode.seq", passive_deletes=True
+    )
+
+
+class RunNode(Base):
+    """One step of a workflow run: its state, data, error, attempts and timing (the checkpoint)."""
+
+    __tablename__ = "run_nodes"
+    __table_args__ = (UniqueConstraint("run_id", "node_id", name="uq_run_node"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    node_id: Mapped[str] = mapped_column(String(100))
+    seq: Mapped[int] = mapped_column(Integer, default=0)  # position in dependency order
+    type: Mapped[str] = mapped_column(String(20))
+    label: Mapped[str] = mapped_column(String(200), default="")
+    action: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending"
+    )  # pending|running|success|failed|skipped|cancelled
+    continued: Mapped[bool] = mapped_column(Boolean, default=False)  # failed but "continue on error"
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    input: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    output: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    logs: Mapped[list] = mapped_column(JSON, default=list)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    run: Mapped[Run] = relationship(back_populates="nodes")
 
 
 class Trigger(Base):

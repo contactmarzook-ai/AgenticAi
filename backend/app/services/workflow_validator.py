@@ -1,6 +1,8 @@
 """Checks run before a workflow is tested or activated. Messages are written for non-technical users."""
 
 import json
+import logging
+import re
 from typing import Any, Optional
 
 from pydantic import BaseModel, ValidationError
@@ -15,6 +17,10 @@ from ..tools import registry
 from .form_input import EMAIL_RE
 from .platform_settings import get_settings
 from .workflow_engine import WorkflowError, edge_branch, topological_order  # noqa: F401
+
+logger = logging.getLogger("agentos.validator")
+ID_RE = re.compile(r"[A-Za-z0-9_\-]{1,100}")
+NUMBER_RE = re.compile(r"-?\d+(\.\d+)?")
 
 NODE_TYPES_ALLOWED = {"input", "action", "loop", "condition", "switch", "end", "agent", "tool", "transform"}
 OPERATORS = {"==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", "starts_with", "is_empty", "not_empty"}
@@ -83,6 +89,17 @@ def _agent_input_problems(db: Session, agent_id: Any, config: dict) -> list[str]
 
 
 def validate_definition(definition: Any, db: Session, owner: Optional[User] = None) -> list[str]:
+    """All problems that stop a workflow from being tested or published (empty list = valid).
+    Never raises: a definition so malformed that checking it fails is reported as invalid."""
+    try:
+        return _validate(definition, db, owner)
+    except Exception:  # noqa: BLE001 - malformed input must never become a 500
+        logger.exception("Workflow validation crashed")
+        db.rollback()
+        return ["The workflow is not in a valid format (it could not be checked)"]
+
+
+def _validate(definition: Any, db: Session, owner: Optional[User] = None) -> list[str]:
     if not isinstance(definition, dict):
         return ["The workflow is not in a valid format"]
     try:
@@ -99,12 +116,29 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
 
     ids = [n.id for n in nodes]
     if len(set(ids)) != len(ids):
-        errors.append("Two steps have the same id")
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        errors.append(f"Two steps have the same id ({', '.join(dupes)})")
+    for n in nodes:
+        if not ID_RE.fullmatch(n.id):
+            errors.append(f"Step id '{n.id[:40]}' must be 1-100 letters, digits, '_' or '-'")
+    if not isinstance(definition.get("edges") or [], list):
+        return errors + ["The workflow's connections are malformed"]
     by_id = {n.id: n for n in nodes}
     bad_edges = [e for e in edges if e.source not in by_id or e.target not in by_id]
     if bad_edges:
         errors.append("A connection points to a step that no longer exists - remove it")
     edges = [e for e in edges if e.source in by_id and e.target in by_id]
+    seen_edges = set()
+    for e in edges:
+        label_of = (by_id[e.source].data or {}).get("label") or e.source
+        if e.source == e.target:
+            errors.append(f"'{label_of}' is connected to itself")
+        key = (e.source, e.target, edge_branch(e.model_dump()))
+        if key in seen_edges:
+            errors.append(f"'{label_of}' has two identical connections to the same step")
+        seen_edges.add(key)
+        if by_id[e.source].type == "end":
+            errors.append(f"Nothing can follow the Finish step ('{label_of}')")
 
     starts = [n for n in nodes if n.type == "input"]
     if len(starts) != 1:
@@ -161,6 +195,23 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
             cond = data.get("condition") or {}
             if not isinstance(cond, dict) or cond.get("operator") not in OPERATORS:
                 errors.append(f"{label}: choose how to compare")
+            else:
+                op = cond.get("operator")
+                if _empty(cond.get("left")):
+                    errors.append(f"{label}: choose the value to check")
+                elif op not in ("is_empty", "not_empty") and _empty(cond.get("right")):
+                    errors.append(f"{label}: enter the value to compare with")
+                right = cond.get("right")
+                if (
+                    op in (">", "<", ">=", "<=")
+                    and isinstance(right, str)
+                    and "{{" not in right
+                    and right.strip()
+                    and not NUMBER_RE.fullmatch(right.strip())
+                ):
+                    errors.append(f"{label}: '{op}' compares numbers, but '{right[:30]}' is not a number")
+            if not any(e.source == n.id for e in edges):
+                pass  # reported above as "not connected to a next step"
             for e in edges:
                 if e.source == n.id and edge_branch(e.model_dump()) not in ("true", "false"):
                     errors.append(f"{label}: connect from the Yes or No handle")
@@ -231,6 +282,98 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
                 errors.append("Failure alerts: the alert address is not a valid email address")
 
     errors.extend(reference_problems(definition)[0])
+    errors.extend(type_problems(db, nodes))
+    return errors
+
+
+# ---------------- type compatibility ----------------
+FORM_TYPES = {"number": "number", "boolean": "boolean"}
+
+
+def _known_outputs(db: Session, nodes: list) -> dict[str, dict]:
+    """Field types each step is known to produce: the Start form, and Run-an-agent steps (from
+    the agent's output contract). Other steps' outputs are not typed."""
+    known: dict[str, dict] = {}
+    for n in nodes:
+        data = n.data or {}
+        if n.type == "input":
+            fields = data.get("fields") if isinstance(data.get("fields"), list) else []
+            known["input"] = {
+                f.get("key"): FORM_TYPES.get(f.get("type"), "string") for f in fields if isinstance(f, dict)
+            }
+            known["input"]["message"] = "string"
+        elif n.type == "action" and data.get("action") == "run_agent":
+            agent_id = (data.get("config") or {}).get("agent_id") if isinstance(data.get("config"), dict) else None
+            agent = db.get(Agent, int(agent_id)) if str(agent_id or "").isdigit() else None
+            if agent is not None:
+                props = (agent.output_schema or contracts.DEFAULT_OUTPUT_SCHEMA).get("properties") or {}
+                known[n.id] = {k: v.get("type") for k, v in props.items()} | {"agent": "string"}
+                known[n.id]["__agent__"] = agent.name
+    return known
+
+
+def _compatible(source: str, target: str) -> bool:
+    """Can a whole-variable value of type `source` satisfy a contract field of type `target`?
+    Text is converted at run time when it holds a number, yes/no or JSON, so text fits anything;
+    numbers and yes/no keep their type and cannot become text."""
+    if source == target or source == "string":
+        return True
+    numeric = {"integer", "number"}
+    return source in numeric and target in numeric
+
+
+def type_problems(db: Session, nodes: list) -> list[str]:
+    known = _known_outputs(db, nodes)
+    from .workflow_engine import VAR_RE, WHOLE_VAR_RE
+
+    errors = []
+    for n in nodes:
+        data = n.data or {}
+        label = f"'{data.get('label') or n.type}'"
+        # 1. References to agent output fields the agent does not return.
+        for text in _strings({k: v for k, v in data.items() if k not in ("label", "fields")}):
+            for m in VAR_RE.finditer(text):
+                root, field = m.group(1), m.group(2).lstrip(".").split(".")[0]
+                fields = known.get(root)
+                if root != "input" and fields and field and field not in fields:
+                    names = ", ".join(k for k in fields if not k.startswith("__"))
+                    errors.append(
+                        f"{label} uses '{field}' from agent '{fields['__agent__']}', which it does not return "
+                        f"(it returns: {names})"
+                    )
+        # 2. Values mapped into an agent's input whose type cannot fit.
+        if n.type == "action" and data.get("action") == "run_agent" and isinstance(data.get("config"), dict):
+            cfg = data["config"]
+            agent = db.get(Agent, int(cfg["agent_id"])) if str(cfg.get("agent_id") or "").isdigit() else None
+            mapping = cfg.get("input")
+            if agent is None or not isinstance(mapping, dict):
+                continue
+
+            def walk(schema: dict, value: Any, path: str, label: str = label) -> None:
+                if isinstance(value, dict) and schema.get("type") == "object":
+                    props = schema.get("properties") or {}
+                    for k, v in value.items():
+                        if k in props:
+                            walk(props[k], v, f"{path}{k}.", label)
+                    return
+                if not isinstance(value, str):
+                    return
+                whole = WHOLE_VAR_RE.match(value)
+                if not whole:
+                    if VAR_RE.search(value) and schema.get("type") not in ("string", None):
+                        # Text with variables inside produces text; only numbers/yes-no that come
+                        # out as plain digits/true/false will fit - checked at run time.
+                        return
+                    return
+                root, field = whole.group(1), whole.group(2).lstrip(".").split(".")[0]
+                src_type = (known.get(root) or {}).get(field)
+                target = schema.get("type")
+                if src_type and target and not _compatible(src_type, target):
+                    errors.append(
+                        f"{label}: '{path.rstrip('.')}' needs {target} but {{{{{root}.{field}}}}} gives {src_type}"
+                    )
+
+            walk(agent.input_schema or contracts.DEFAULT_INPUT_SCHEMA, mapping, "")
     return errors
 
 

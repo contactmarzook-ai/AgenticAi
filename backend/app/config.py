@@ -99,6 +99,16 @@ class Settings:
     workflow_max_nodes: int = field(default_factory=lambda: _int("WORKFLOW_MAX_NODES", 50))
     workflow_timeout_seconds: int = field(default_factory=lambda: _int("WORKFLOW_TIMEOUT_SECONDS", 900))
     run_worker_threads: int = field(default_factory=lambda: _int("RUN_WORKER_THREADS", 4))
+    # Durable runs: API pods execute runs (RUN_WORKER_ENABLED) and poll the database for queued
+    # or abandoned runs every RUN_POLL_SECONDS (0 = only runs started by this pod). A run whose
+    # heartbeat is older than RUN_STALE_SECONDS is taken over and resumed.
+    run_worker_enabled: bool = field(default_factory=lambda: _bool("RUN_WORKER_ENABLED", True))
+    run_poll_seconds: int = field(default_factory=lambda: _int("RUN_POLL_SECONDS", 2))
+    run_heartbeat_seconds: int = field(default_factory=lambda: _int("RUN_HEARTBEAT_SECONDS", 10))
+    run_stale_seconds: int = field(default_factory=lambda: _int("RUN_STALE_SECONDS", 60))
+    run_max_resumes: int = field(default_factory=lambda: _int("RUN_MAX_RESUMES", 3))
+    # Steps of one workflow run that may execute at the same time (independent branches).
+    workflow_max_parallel: int = field(default_factory=lambda: _int("WORKFLOW_MAX_PARALLEL", 4))
     chat_history_messages: int = field(default_factory=lambda: _int("CHAT_HISTORY_MESSAGES", 10))
     max_message_chars: int = field(default_factory=lambda: _int("MAX_MESSAGE_CHARS", 8000))
 

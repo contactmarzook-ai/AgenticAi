@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..database import get_db
 from ..models import Agent, Run, User, Workflow
-from ..rbac import can_edit, can_view, has_permission, require_permission
+from ..rbac import can_edit, can_view, has_permission, is_admin, require_permission
 from ..schemas import Page, RunOut, RunSummary
-from ..services.runs import create_run, enforce_rate_limit, submit_run
+from ..services.runs import cancel_run, create_run, enforce_rate_limit, submit_run
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -58,6 +58,29 @@ def get_run(run_id: int, db: Session = Depends(get_db), user: User = Depends(req
     run = db.get(Run, run_id)
     if not _visible_run(run, user):
         raise HTTPException(status_code=404, detail="Run not found")
+    return run
+
+
+@router.post("/{run_id}/cancel", response_model=RunOut)
+def cancel(
+    run_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("run:read_own")),
+):
+    """Cancel a queued run, or stop a running one before its next step. Allowed for whoever
+    started it, whoever can edit the agent/workflow, and admins."""
+    run = db.get(Run, run_id)
+    if not _visible_run(run, user):
+        raise HTTPException(status_code=404, detail="Run not found")
+    target = db.get(Agent if run.target_type == "agent" else Workflow, run.target_id)
+    if not (run.user_id == user.id or is_admin(user) or (target is not None and can_edit(user, target))):
+        raise HTTPException(status_code=403, detail="You cannot cancel this run")
+    if run.status in ("succeeded", "failed", "cancelled"):
+        raise HTTPException(status_code=409, detail=f"The run already {run.status}")
+    run = cancel_run(db, run)
+    audit(db, "run.cancel", user=user, resource_type="run", resource_id=run.id, request=request)
+    db.refresh(run)
     return run
 
 

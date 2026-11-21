@@ -13,6 +13,7 @@ os.environ.update(
         "LLM_DEFAULT_MODEL": "test-model",
         "USER_RUNS_PER_MINUTE": "1000",
         "AUTH_REQUESTS_PER_MINUTE": "1000",
+        "RUN_POLL_SECONDS": "0",  # tests drive recovery explicitly (worker.poll_once)
         "PUBLIC_REQUESTS_PER_MINUTE": "1000",
         "LOGIN_MAX_ATTEMPTS": "3",
         "BCRYPT_ROUNDS": "4",
@@ -59,8 +60,24 @@ def tool_call(name: str, args: dict, call_id: str = "c1") -> LLMResponse:
     return LLMResponse(content="", tool_calls=[ToolCall(id=call_id, name=name, arguments=json.dumps(args))])
 
 
+def _wait_for_background_runs(timeout: float = 15.0) -> None:
+    """Runs started in the background by a previous test must finish before tables are dropped."""
+    from app.services.runs import worker
+
+    deadline = time.time() + timeout
+    while worker.free_slots() < worker_threads() and time.time() < deadline:
+        time.sleep(0.05)
+
+
+def worker_threads() -> int:
+    from app.config import settings
+
+    return settings.run_worker_threads
+
+
 @pytest.fixture(autouse=True)
 def fresh_db():
+    _wait_for_background_runs()
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

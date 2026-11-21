@@ -324,7 +324,13 @@ def submit_public_form(
         wf_now = active_version(db, trig.workflow_group_id)
         declared = {f["key"] for f in form_fields((wf_now.definition if wf_now else {}) or {})}
         submitted = {k: v for k, v in (body.input or {}).items() if k in declared}
-        run = start_trigger_run(db, trig, {**submitted, **(trig.input or {})}, "form_link")
+        run = start_trigger_run(
+            db,
+            trig,
+            {**submitted, **(trig.input or {})},
+            "form_link",
+            hold=bool((trig.options or {}).get("show_result")),
+        )
     except InputProblem as exc:
         raise HTTPException(
             status_code=400, detail={"message": "Please check the form", "errors": exc.problems}
