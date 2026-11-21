@@ -18,7 +18,7 @@ def default_model(db: Session) -> Optional[LLMModel]:
 
 
 def role_may_use(model: LLMModel, role: str) -> bool:
-    return not model.allowed_roles or role in model.allowed_roles or role == "admin"
+    return not model.allowed_roles or role in model.allowed_roles or role == "platform_admin"
 
 
 def resolve_model(db: Session, model_id: Optional[int], role: str) -> LLMModel:

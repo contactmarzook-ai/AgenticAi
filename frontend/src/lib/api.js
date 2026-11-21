@@ -10,10 +10,51 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Access tokens are short-lived. The server keeps the session in an HttpOnly cookie (scripts
+// cannot read it); /auth/refresh swaps it for a new access token. One refresh at a time.
+let refreshing = null;
+export function refreshSession() {
+  if (!refreshing) {
+    refreshing = axios
+      .post('/api/auth/refresh', null, { timeout: 15000 })
+      .then((r) => {
+        if (r.status === 204) throw new Error('no session');
+        useAuth.getState().setToken(r.data.access_token);
+        return r.data.access_token;
+      })
+      .finally(() => {
+        refreshing = null;
+      });
+  }
+  return refreshing;
+}
+
+/** Sign out on the server (ends the session everywhere it is used), then locally. */
+export async function signOut() {
+  try {
+    await api.post('/auth/logout');
+  } catch {
+    /* already signed out or offline: still clear locally */
+  }
+  useAuth.getState().logout();
+}
+
+const NO_REFRESH = ['/auth/login', '/auth/refresh', '/auth/logout'];
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401 && !error.config.url.endsWith('/auth/login') && !error.config.url.startsWith('/public/')) {
+  async (error) => {
+    const cfg = error.config || {};
+    const url = cfg.url || '';
+    if (error.response?.status === 401 && !url.startsWith('/public/') && !NO_REFRESH.some((u) => url.endsWith(u))) {
+      if (!cfg._retried && useAuth.getState().token) {
+        try {
+          const token = await refreshSession();
+          return api({ ...cfg, _retried: true, headers: { ...cfg.headers, Authorization: `Bearer ${token}` } });
+        } catch {
+          /* fall through: the session is over */
+        }
+      }
       useAuth.getState().logout({ expired: true });
     }
     return Promise.reject(error);

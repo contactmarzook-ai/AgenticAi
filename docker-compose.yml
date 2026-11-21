@@ -7,6 +7,9 @@ name: agentos
 
 x-api-env: &api-env
   APP_ENV: production
+  # Secure session cookies need HTTPS (http://localhost also works). Set COOKIE_SECURE=false in .env
+  # only to try the stack over plain HTTP on another machine.
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
   DATABASE_URL: postgresql+psycopg://agentos:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/agentos
   JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
   CREDENTIALS_KEY: ${CREDENTIALS_KEY:?set CREDENTIALS_KEY in .env}
@@ -15,6 +18,12 @@ x-api-env: &api-env
   LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
   LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-qwen2.5:7b-instruct}
   HTTP_TOOL_ALLOWED_HOSTS: ${HTTP_TOOL_ALLOWED_HOSTS:-}
+  OIDC_TENANT_ID: ${OIDC_TENANT_ID:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+  OIDC_ROLE_MAP: ${OIDC_ROLE_MAP:-{}}
+  OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-}
   CORS_ORIGINS: ""
   AUTO_CREATE_TABLES: "false"
   LOG_JSON: "true"

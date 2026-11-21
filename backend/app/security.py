@@ -45,13 +45,23 @@ def password_problems(password: str) -> list[str]:
     return problems
 
 
-def create_access_token(user_id: int, token_version: int) -> tuple[str, int]:
+TOKEN_ISSUER = "stardust"
+TOKEN_AUDIENCE = "stardust-api"
+
+
+def create_access_token(user_id: int, token_version: int, session_id: str) -> tuple[str, int]:
+    """Short-lived access token bound to a server-side session (revocable via the session)."""
     expires_in = settings.jwt_expire_minutes * 60
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "tv": token_version,
+        "sid": session_id,
+        "typ": "access",
+        "iss": TOKEN_ISSUER,
+        "aud": TOKEN_AUDIENCE,
         "iat": now,
+        "nbf": now,
         "exp": now + timedelta(seconds=expires_in),
         "jti": secrets.token_hex(8),
     }
@@ -59,7 +69,26 @@ def create_access_token(user_id: int, token_version: int) -> tuple[str, int]:
 
 
 def decode_access_token(token: str) -> dict:
-    return jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM], options={"require": ["sub", "exp"]})
+    payload = jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=[ALGORITHM],  # fixed list: "none" and key-confusion tricks are rejected
+        audience=TOKEN_AUDIENCE,
+        issuer=TOKEN_ISSUER,
+        leeway=10,
+        options={"require": ["sub", "exp", "iat", "sid", "typ", "iss", "aud"]},
+    )
+    if payload.get("typ") != "access":
+        raise jwt.InvalidTokenError("not an access token")
+    return payload
+
+
+def new_refresh_token() -> str:
+    return "rft_" + secrets.token_urlsafe(40)
+
+
+def new_session_id() -> str:
+    return secrets.token_hex(16)
 
 
 def new_webhook_token() -> str:

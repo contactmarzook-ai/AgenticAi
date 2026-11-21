@@ -2,8 +2,9 @@ import { create } from 'zustand';
 
 const KEY = 'agentos.token';
 
-// localStorage so a sign-in carries over to new tabs. The token expires server-side
-// (JWT_EXPIRE_MINUTES) and is revoked on password/role changes.
+// localStorage so a sign-in carries over to new tabs. The access token is short-lived
+// (JWT_EXPIRE_MINUTES) and renewed from the HttpOnly session cookie (see api.js refreshSession);
+// the server can revoke it at any time (sign-out, password or role change).
 function readToken() {
   try {
     return localStorage.getItem(KEY);

@@ -8,16 +8,16 @@ def default_model_id(client, headers) -> int:
 
 
 def test_builder_creates_agent_and_department_is_forced(client, make_user):
-    builder = make_user("b@example.com", "builder", department="ops")
+    builder = make_user("b@example.com", "developer", department="ops")
     agent = create_agent(client, builder, department="finance", tools=["calculator"])
     assert agent["department"] == "ops"  # builders cannot place agents in other departments
     assert agent["can_edit"] is True
 
 
 def test_visibility_rules(client, make_user):
-    builder = make_user("b@example.com", "builder", department="ops")
-    same_dept = make_user("same@example.com", "user", department="ops")
-    other_dept = make_user("other@example.com", "user", department="hr")
+    builder = make_user("b@example.com", "developer", department="ops")
+    same_dept = make_user("same@example.com", "operator", department="ops")
+    other_dept = make_user("other@example.com", "operator", department="hr")
 
     dept = create_agent(client, builder, name="DeptAgent", visibility="department")
     private = create_agent(client, builder, name="PrivateAgent", visibility="private")
@@ -39,7 +39,7 @@ def test_visibility_rules(client, make_user):
 
 
 def test_tool_role_restriction_and_unknown_tool(client, make_user, admin):
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     r = client.post("/api/agents", headers=builder, json={"name": "x", "tools": ["does_not_exist"]})
     assert r.status_code == 400
     # http_get requires builder: fine for builder; admin too.
@@ -66,17 +66,17 @@ def test_model_role_allowlist(client, admin, make_user):
             "provider_id": providers[0]["id"],
             "model_name": "big",
             "display_name": "Big",
-            "allowed_roles": ["admin"],
+            "allowed_roles": ["platform_admin"],
         },
     ).json()
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     assert big["id"] not in {m["id"] for m in client.get("/api/models", headers=builder).json()}
     r = client.post("/api/agents", headers=builder, json={"name": "x", "model_id": big["id"]})
     assert r.status_code == 403
 
     # An admin-built public agent on the restricted model cannot be run by a normal user.
     agent = create_agent(client, admin, model_id=big["id"], visibility="public")
-    user = make_user("u@example.com", "user")
+    user = make_user("u@example.com", "operator")
     run = client.post(f"/api/agents/{agent['id']}/run", headers=user, json={"message": "hi"}).json()
     assert run["status"] == "failed"
     assert "not allowed" in run["error"]

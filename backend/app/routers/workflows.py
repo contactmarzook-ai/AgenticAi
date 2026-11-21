@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..database import get_db
 from ..models import AuditLog, Run, Trigger, User, Workflow
-from ..rbac import can_edit, can_view, has_permission, require_permission
+from ..rbac import can_edit, can_view, has_permission, is_admin, require_permission, visible_filter
 from ..schemas import GenerateRequest, RunOut, ValidationOut, WorkflowIn, WorkflowOut, WorkflowRunRequest
 from ..services.ai_builder import BuilderError
 from ..services.ai_builder import generate as ai_generate
@@ -58,7 +58,7 @@ def list_workflows(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("workflow:read")),
 ):
-    q = db.query(Workflow)
+    q = visible_filter(db.query(Workflow), Workflow, user)
     if group_id:
         q = q.filter(Workflow.group_id == group_id)
     rows = [
@@ -110,7 +110,12 @@ def create_workflow(
     """Create a new workflow, or a new draft version when group_id is given."""
     version, group_id, owner_id = 1, None, user.id
     if body.group_id:
-        latest = db.query(Workflow).filter(Workflow.group_id == body.group_id).order_by(Workflow.version.desc()).first()
+        latest = (
+            db.query(Workflow)
+            .filter(Workflow.group_id == body.group_id, Workflow.org_id == user.org_id)
+            .order_by(Workflow.version.desc())
+            .first()
+        )
         if latest is None or not can_view(user, latest):
             raise HTTPException(status_code=404, detail="Workflow not found")
         _require_edit(user, latest)
@@ -120,8 +125,8 @@ def create_workflow(
         owner_id = latest.owner_id or user.id
 
     data = body.model_dump(exclude={"group_id"})
-    data["department"] = (body.department or None) if user.role == "admin" else user.department
-    wf = Workflow(**data, version=version, status="draft", owner_id=owner_id)
+    data["department"] = (body.department or None) if is_admin(user) else user.department
+    wf = Workflow(**data, version=version, status="draft", owner_id=owner_id, org_id=user.org_id)
     if group_id:
         wf.group_id = group_id
     db.add(wf)
@@ -152,7 +157,7 @@ def update_draft(
     if wf.status != "draft":
         raise HTTPException(status_code=409, detail="Only drafts can be edited. Save a new version instead.")
     data = body.model_dump(exclude={"group_id"})
-    data["department"] = (body.department or None) if user.role == "admin" else user.department
+    data["department"] = (body.department or None) if is_admin(user) else user.department
     for k, v in data.items():
         setattr(wf, k, v)
     audit(db, "workflow.update", user=user, resource_type="workflow", resource_id=wf.id, request=request)
@@ -333,6 +338,7 @@ def use_template(
         visibility="private",
         department=user.department,
         owner_id=user.id,
+        org_id=user.org_id,
     )
     db.add(wf)
     db.flush()
@@ -400,6 +406,7 @@ def duplicate(
         visibility="private",
         department=user.department,
         owner_id=user.id,
+        org_id=user.org_id,
     )
     db.add(wf)
     db.flush()
@@ -424,13 +431,13 @@ def delete_automation(
     user: User = Depends(require_permission("workflow:write")),
 ):
     """Delete an automation: every version and its schedules/webhooks. Run history is kept."""
-    versions = db.query(Workflow).filter(Workflow.group_id == group_id).all()
+    versions = db.query(Workflow).filter(Workflow.group_id == group_id, Workflow.org_id == user.org_id).all()
     latest = max(versions, key=lambda w: w.version) if versions else None
     if latest is None or not can_view(user, latest):
         raise HTTPException(status_code=404, detail="Workflow not found")
-    if not (user.role == "admin" or latest.owner_id == user.id):
+    if not (is_admin(user) or latest.owner_id == user.id):
         raise HTTPException(status_code=403, detail="Only the owner or an admin can delete a workflow")
-    triggers = db.query(Trigger).filter(Trigger.workflow_group_id == group_id).all()
+    triggers = db.query(Trigger).filter(Trigger.workflow_group_id == group_id, Trigger.org_id == user.org_id).all()
     for t in triggers:
         db.delete(t)
     for v in versions:

@@ -84,8 +84,8 @@ export default function Settings() {
         <section className="grid gap-4 rounded-lg border bg-surface shadow-card p-5 md:grid-cols-2">
           <Field label="Who can create connections">
             <Select value={s.connections_min_role} onChange={(e) => setS({ ...s, connections_min_role: e.target.value })}>
-              <option value="builder">Builders and admins</option>
-              <option value="admin">Admins only</option>
+              <option value="developer">Developers and admins</option>
+              <option value="org_admin">Admins only</option>
             </Select>
           </Field>
           <Field label="Keep run history for (days)" hint="0 keeps it forever. The audit log is never deleted.">

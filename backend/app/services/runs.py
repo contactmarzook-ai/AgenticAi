@@ -74,6 +74,7 @@ def create_run(
         status="queued",
         input=input_data,
         user_id=user.id if user else None,
+        org_id=target.org_id,
         trigger_id=trigger_id,
     )
     db.add(run)
@@ -105,7 +106,7 @@ def _ask_llm_factory(db: Session, role: str, usage: dict):
 
 def _execute(db: Session, run: Run, usage: dict) -> None:
     user = db.get(User, run.user_id) if run.user_id else None
-    role = user.role if user and user.is_active else "user"
+    role = user.role if user and user.is_active else "viewer"
 
     if run.target_type == "agent":
         agent = db.get(Agent, run.target_id)

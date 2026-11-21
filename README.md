@@ -43,11 +43,22 @@ api ──► LLM endpoint(s): Ollama / vLLM / any OpenAI-compatible /v1/chat/co
 
 ## Roles and access
 
+Each user belongs to one **organization**. Organizations never see each other's agents,
+workflows, runs, triggers or connections; the API answers "not found" for another
+organization's ids.
+
 | Role | Can |
 |---|---|
-| `user` | Chat; run agents and workflows shared with them; see their own runs |
-| `builder` | Everything above, plus build automations, agents, schedules/webhooks and connections |
-| `admin` | Everything, plus platform settings, users, models, audit log, monitoring and all runs |
+| `viewer` | See agents and workflows shared with them, and their own run history |
+| `operator` | Everything above, plus chat and run agents and workflows |
+| `developer` | Everything above, plus build automations, agents, schedules/webhooks and connections |
+| `auditor` | Read-only view of everything in their organization, plus audit log and monitoring |
+| `org_admin` | Full control of their organization, including its users |
+| `platform_admin` | Everything, in every organization, plus organizations, models and platform settings |
+
+Sign-in is by password and/or Microsoft Entra ID. Sessions use a 15-minute access token and an
+HttpOnly refresh cookie, and can be revoked server-side. Full details, the permission matrix and
+Entra ID setup are in [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md).
 
 Admin **Settings** control: which steps exist (for automations and agents alike; saving shows
 which automations are affected), which hosts HTTP steps may call (with a separate switch for
@@ -157,9 +168,17 @@ All settings are environment variables (see `backend/app/config.py`). The import
 |---|---|---|
 | `APP_ENV` | `development` | `production` refuses to start with a weak `JWT_SECRET`, SQLite, or auto-created tables, and hides `/api/docs` |
 | `DATABASE_URL` | `sqlite:///./agentos.db` | Production: `postgresql+psycopg://user:pass@host:5432/db` |
-| `JWT_SECRET` | dev value | ≥ 32 random characters in production |
+| `JWT_SECRET` | random per process (dev) | Required in production: ≥ 32 random characters |
 | `CREDENTIALS_KEY` | dev value | Encrypts saved connections; ≥ 32 random characters in production. Back it up |
-| `JWT_EXPIRE_MINUTES` | `480` | Session length |
+| `JWT_EXPIRE_MINUTES` | `15` | Access-token lifetime (≤ 60 in production); renewed silently |
+| `REFRESH_EXPIRE_HOURS` | `12` | Absolute session length |
+| `COOKIE_SECURE` | `true` in production | HTTPS-only session cookie; `false` only for plain-HTTP trials |
+| `LOCAL_LOGIN_ENABLED` | `true` | `false` = Microsoft sign-in only (platform admins keep passwords) |
+| `OIDC_TENANT_ID` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | empty | Microsoft Entra ID sign-in (all four enable it) |
+| `OIDC_ROLE_MAP` / `OIDC_DEFAULT_ROLE` / `OIDC_ORG_SLUG` / `OIDC_ALLOWED_DOMAINS` | `{}` / empty / `default` / empty | Entra app roles/groups → roles, and who may sign in; see `docs/SECURITY_MODEL.md` |
+| `AUTH_REQUESTS_PER_MINUTE` | `60` | Per address: sign-in, refresh and Microsoft sign-in requests |
+| `PUBLIC_REQUESTS_PER_MINUTE` | `60` | Per address: webhook and public form requests |
+| `MAX_REQUEST_BYTES` | `2000000` | Larger request bodies are refused (413) |
 | `BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` | — | Creates the first admin when no users exist |
 | `LLM_BASE_URL` / `LLM_DEFAULT_MODEL` | Ollama on localhost | Seeds the first provider/model when none exist; manage them afterwards on the Models page |
 | `AGENT_MAX_STEPS_CAP` | `15` | Upper bound for any agent's tool steps |

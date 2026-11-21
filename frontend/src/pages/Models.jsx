@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plug, Plus } from 'lucide-react';
+import { ROLES, roleLabel } from '../lib/roles';
 import api, { errorMessage } from '../lib/api';
 import { Alert, Badge, Button, Checkbox, Field, Input, Modal, PageHeader, Select, Table } from '../lib/ui';
 
-const ROLES = ['user', 'builder', 'admin'];
 
 export default function Models() {
   const [providers, setProviders] = useState([]);
@@ -90,7 +90,7 @@ export default function Models() {
               { key: 'model_name', label: 'Model id', className: 'font-mono text-xs' },
               { key: 'provider', label: 'Provider', render: (m) => providerName(m.provider_id) },
               { key: 'supports_tools', label: 'Tools', render: (m) => (m.supports_tools ? 'yes' : 'no') },
-              { key: 'allowed_roles', label: 'Allowed roles', render: (m) => (m.allowed_roles.length ? m.allowed_roles.join(', ') : 'all') },
+              { key: 'allowed_roles', label: 'Allowed roles', render: (m) => (m.allowed_roles.length ? m.allowed_roles.map(roleLabel).join(', ') : 'all') },
               { key: 'is_active', label: 'Status', render: (m) => (m.is_active ? <Badge color="green">active</Badge> : <Badge color="red">disabled</Badge>) },
               {
                 key: 'actions',
@@ -178,7 +178,7 @@ function ModelForm({ value, providers, onClose, onSaved }) {
         <div>
           <div className="mb-1 text-xs font-medium text-muted-strong">Allowed roles (none ticked = everyone)</div>
           <div className="flex gap-4">
-            {ROLES.map((r) => <Checkbox key={r} label={r} checked={f.allowed_roles.includes(r)} onChange={() => toggleRole(r)} />)}
+            {ROLES.map((r) => <Checkbox key={r} label={roleLabel(r)} checked={f.allowed_roles.includes(r)} onChange={() => toggleRole(r)} />)}
           </div>
         </div>
       </div>

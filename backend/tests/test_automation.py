@@ -44,7 +44,7 @@ def save_and_test(client, headers, definition, inp=None, name="Flow"):
 
 # ---------------- catalog & settings ----------------
 def test_catalog_lists_steps_and_connection_types(client, make_user):
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     cat = client.get("/api/nodes", headers=builder).json()
     keys = {n["key"] for n in cat["nodes"]}
     assert {
@@ -63,7 +63,7 @@ def test_catalog_lists_steps_and_connection_types(client, make_user):
 
 
 def test_admin_can_disable_steps(client, admin, make_user):
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     assert client.put("/api/settings", headers=builder, json={"disabled_nodes": ["http_request"]}).status_code == 403
     assert client.put("/api/settings", headers=admin, json={"disabled_nodes": ["nope"]}).status_code == 400
     r = client.put("/api/settings", headers=admin, json={"disabled_nodes": ["http_request"]})
@@ -310,8 +310,8 @@ def test_send_email_uses_connection(client, admin, monkeypatch):
 
 
 def test_connections_are_private_to_owner(client, admin, make_user):
-    a = make_user("a@example.com", "builder", department="ops")
-    b = make_user("b@example.com", "builder", department="ops")
+    a = make_user("a@example.com", "developer", department="ops")
+    b = make_user("b@example.com", "developer", department="ops")
     cred = make_smtp(client, a)
     assert cred["id"] not in {c["id"] for c in client.get("/api/credentials", headers=b).json()}
     # b cannot use a's private connection in a workflow
@@ -335,7 +335,7 @@ def test_connections_are_private_to_owner(client, admin, make_user):
     )
     assert cred["id"] in {c["id"] for c in client.get("/api/credentials", headers=b).json()}
     # only admins create connections when the admin says so
-    client.put("/api/settings", headers=admin, json={"connections_min_role": "admin"})
+    client.put("/api/settings", headers=admin, json={"connections_min_role": "org_admin"})
     assert (
         client.post(
             "/api/credentials", headers=a, json={"name": "x", "type": "slack_webhook", "data": {"url": "https://h"}}
@@ -346,7 +346,7 @@ def test_connections_are_private_to_owner(client, admin, make_user):
 
 # ---------------- templates & AI builder ----------------
 def test_templates_create_valid_drafts(client, make_user, llm):
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     templates = client.get("/api/templates", headers=builder).json()
     assert len(templates) >= 8
     for t in templates:
@@ -404,7 +404,7 @@ BLUEPRINT = {
 
 
 def test_ai_builder_generates_and_repairs(client, make_user, llm):
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     replies = iter(
         ['{"steps": [{"id": "x", "type": "action", "action": "made_up"}], "links": []}', json.dumps(BLUEPRINT)]
     )
@@ -442,8 +442,8 @@ def test_rerun(client, admin, llm):
 # ---------------- regression tests for the security review ----------------
 def test_workflow_cannot_use_agent_its_author_cannot_see(client, make_user, llm):
     llm.handler = lambda m, t, j: LLMResponse(content="SECRET " + m[0]["content"])
-    fin = make_user("fin@example.com", "builder", department="finance")
-    eng = make_user("eng@example.com", "builder", department="eng")
+    fin = make_user("fin@example.com", "developer", department="finance")
+    eng = make_user("eng@example.com", "developer", department="eng")
     secret = create_agent(client, fin, name="Secret", system_prompt="TOP SECRET PROMPT", visibility="private")
     for d in (
         chain(start(), step("a", "run_agent", {"agent_id": secret["id"], "message": "leak"}), finish()),
@@ -480,7 +480,7 @@ def test_workflow_cannot_use_agent_its_author_cannot_see(client, make_user, llm)
 
 
 def test_trigger_stops_when_owner_loses_access(client, admin, make_user, llm):
-    bob = make_user("bob@example.com", "builder", department="sales")
+    bob = make_user("bob@example.com", "developer", department="sales")
     wf = client.post(
         "/api/workflows",
         headers=bob,
@@ -496,7 +496,7 @@ def test_trigger_stops_when_owner_loses_access(client, admin, make_user, llm):
     token = {"X-Webhook-Token": trig["webhook_token"]}
     assert client.post(f"/api/hooks/{trig['id']}", headers=token, json={}).status_code == 202
     bob_id = client.get("/api/auth/me", headers=bob).json()["id"]
-    client.patch(f"/api/admin/users/{bob_id}", headers=admin, json={"role": "user", "department": "eng"})
+    client.patch(f"/api/admin/users/{bob_id}", headers=admin, json={"role": "operator", "department": "eng"})
     assert client.post(f"/api/hooks/{trig['id']}", headers=token, json={}).status_code == 409
 
 

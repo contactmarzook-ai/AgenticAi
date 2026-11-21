@@ -6,10 +6,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from .. import ratelimit
 from ..audit import audit
+from ..config import settings
 from ..database import get_db
 from ..models import Run, Trigger, User, Workflow, utcnow
-from ..rbac import can_edit, can_view, require_permission
+from ..rbac import can_edit, can_view, is_admin, require_permission
 from ..schemas import RunOut, TriggerCreated, TriggerIn, TriggerOut, WorkflowRunRequest
 from ..security import hash_token, new_webhook_token
 from ..services.form_input import check_input, form_fields
@@ -65,11 +67,11 @@ def _check_schedule_input(db: Session, body: TriggerIn) -> None:
 
 def _visible_trigger(db: Session, trigger_id: int, user: User) -> Trigger:
     trig = db.get(Trigger, trigger_id)
-    if trig is None:
+    if trig is None or trig.org_id != user.org_id:
         raise HTTPException(status_code=404, detail="Trigger not found")
     wf = _latest(db, trig.workflow_group_id)
     owns = trig.owner_id == user.id and wf is not None and can_view(user, wf)
-    if user.role != "admin" and not owns and not (wf and can_edit(user, wf)):
+    if not is_admin(user) and not owns and not (wf and can_edit(user, wf)):
         raise HTTPException(status_code=404, detail="Trigger not found")
     return trig
 
@@ -80,13 +82,13 @@ def list_triggers(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("trigger:write")),
 ):
-    q = db.query(Trigger)
+    q = db.query(Trigger).filter(Trigger.org_id == user.org_id)
     if workflow_group_id:
         q = q.filter(Trigger.workflow_group_id == workflow_group_id)
     out = []
     for trig in q.order_by(Trigger.id).all():
         wf = _latest(db, trig.workflow_group_id)
-        if user.role == "admin" or (wf and (can_edit(user, wf) or (trig.owner_id == user.id and can_view(user, wf)))):
+        if is_admin(user) or (wf and (can_edit(user, wf) or (trig.owner_id == user.id and can_view(user, wf)))):
             out.append(trig)
     return out
 
@@ -101,7 +103,7 @@ def create_trigger(
     _check_workflow(db, user, body.workflow_group_id)
     _validate(body)
     _check_schedule_input(db, body)
-    trig = Trigger(**body.model_dump(exclude={"options"}), owner_id=user.id)
+    trig = Trigger(**body.model_dump(exclude={"options"}), owner_id=user.id, org_id=user.org_id)
     trig.options = body.options.model_dump() if body.options and body.type == "form" else None
     token = None
     if body.type == "schedule":
@@ -203,6 +205,7 @@ def _verified_webhook(
     x_webhook_token: str = Header(default=""),
 ) -> Trigger:
     """Checked before the request body is read (dependencies resolve in order)."""
+    ratelimit.check(request, "public", settings.public_requests_per_minute)
     trig = db.get(Trigger, trigger_id)
     valid = (
         trig is not None
@@ -272,7 +275,9 @@ public = APIRouter(prefix="/api/public/forms", tags=["public forms"])
 FORM_SUBMISSIONS_PER_MINUTE = 20
 
 
-def _form_trigger(db: Session, trigger_id: int, token: str) -> Trigger:
+def _form_trigger(db: Session, trigger_id: int, token: str, request: Request) -> Trigger:
+    # Per-address limit: slows down token guessing and anonymous flooding.
+    ratelimit.check(request, "public", settings.public_requests_per_minute)
     trig = db.get(Trigger, trigger_id)
     if not (
         trig is not None
@@ -286,8 +291,10 @@ def _form_trigger(db: Session, trigger_id: int, token: str) -> Trigger:
 
 
 @public.get("/{trigger_id}")
-def public_form(trigger_id: int, db: Session = Depends(get_db), x_form_token: str = Header(default="")):
-    trig = _form_trigger(db, trigger_id, x_form_token)
+def public_form(
+    trigger_id: int, request: Request, db: Session = Depends(get_db), x_form_token: str = Header(default="")
+):
+    trig = _form_trigger(db, trigger_id, x_form_token, request)
     wf = active_version(db, trig.workflow_group_id)
     if wf is None:
         raise HTTPException(status_code=404, detail="This form is not available right now")
@@ -307,7 +314,7 @@ def submit_public_form(
     db: Session = Depends(get_db),
     x_form_token: str = Header(default=""),
 ):
-    trig = _form_trigger(db, trigger_id, x_form_token)
+    trig = _form_trigger(db, trigger_id, x_form_token, request)
     recent = db.query(Run).filter(Run.trigger_id == trig.id, Run.created_at >= utcnow() - timedelta(minutes=1)).count()
     if recent >= FORM_SUBMISSIONS_PER_MINUTE:
         raise HTTPException(status_code=429, detail="Too many submissions right now. Please try again in a minute.")

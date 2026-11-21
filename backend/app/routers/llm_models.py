@@ -6,7 +6,7 @@ from ..audit import audit
 from ..database import get_db
 from ..llm.client import LLMError, get_llm_client
 from ..models import Agent, LLMModel, LLMProvider, User
-from ..rbac import require_permission
+from ..rbac import has_permission, require_permission
 from ..schemas import ModelIn, ModelOut, ProviderIn, ProviderOut
 from ..services.models_service import role_may_use, to_target
 
@@ -19,7 +19,7 @@ read = require_permission("model:read")
 def list_models(db: Session = Depends(get_db), user: User = Depends(read)):
     """Models the caller may assign to agents (active + allowed for their role)."""
     models = db.query(LLMModel).join(LLMProvider).order_by(LLMModel.display_name).all()
-    if user.role == "admin":
+    if has_permission(user, "model:manage"):
         return models
     return [m for m in models if m.is_active and m.provider.is_active and role_may_use(m, user.role)]
 

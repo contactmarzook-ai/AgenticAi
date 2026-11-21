@@ -36,8 +36,10 @@ def audit(
     details: Optional[dict] = None,
     request: Optional[Request] = None,
     commit: bool = True,
+    org_id: Optional[int] = None,
 ) -> None:
     entry = AuditLog(
+        org_id=org_id if org_id is not None else (user.org_id if user else None),
         user_id=user.id if user else None,
         user_email=user.email if user else user_email,
         action=action,

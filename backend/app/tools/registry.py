@@ -28,7 +28,7 @@ class Tool:
     parameters: dict  # JSON Schema (type: object)
     fn: Callable[..., Any]
     # Lowest role allowed to attach this tool to an agent.
-    min_role: str = "builder"
+    min_role: str = "developer"
 
     def openai_spec(self) -> dict:
         return {
@@ -49,7 +49,7 @@ def register(tool: Tool) -> Tool:
     return tool
 
 
-def tool(name: str, description: str, parameters: dict, min_role: str = "builder"):
+def tool(name: str, description: str, parameters: dict, min_role: str = "developer"):
     """Decorator form of `register`."""
 
     def wrap(fn):

@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, Download, History, LayoutTemplate, Play, Plus, Power, Search, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
+import { isAdmin } from '../lib/roles';
 import api, { errorMessage } from '../lib/api';
 import { can } from '../lib/auth';
 import { Alert, Badge, Button, Empty, Modal, StatusBadge, formatDate } from '../lib/ui';
@@ -218,7 +219,7 @@ export default function Automations({ user }) {
               {groups.map(({ latest, live, lastOff }) => {
                 const wf = live || latest;
                 const off = !live && !!lastOff;
-                const isOwner = user.role === 'admin' || latest.owner_id === user.id;
+                const isOwner = isAdmin(user) || latest.owner_id === user.id;
                 return (
                   <div key={latest.group_id} className="flex flex-wrap items-center gap-2 px-5 py-4">
                     <div className="min-w-[14rem] flex-1">

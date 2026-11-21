@@ -138,7 +138,7 @@ def test_duplicate_and_delete_automation(client, admin, make_user):
     client.post(
         "/api/triggers", headers=admin, json={"name": "h", "workflow_group_id": wf["group_id"], "type": "webhook"}
     )
-    other = make_user("b@example.com", "builder")
+    other = make_user("b@example.com", "developer")
     copy = client.post(f"/api/workflows/{wf['id']}/duplicate", headers=other).json()
     assert copy["name"] == "Copy of Orig" and copy["status"] == "draft" and copy["group_id"] != wf["group_id"]
     assert client.delete(f"/api/workflows/groups/{wf['group_id']}", headers=other).status_code == 403
@@ -210,7 +210,7 @@ def test_history_filter_by_automation_and_retention(client, admin, llm):
 
 
 def test_generate_is_rate_limited(client, make_user, llm):
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     llm.handler = lambda m, t, j: LLMResponse(content="nope")
     codes = [
         client.post("/api/workflows/generate", headers=builder, json={"prompt": "do a thing"}).status_code

@@ -12,6 +12,7 @@ Security issues are listed separately in `SECURITY_FINDINGS.md`.
 | D2 | Browser tests live outside the repository and do not run in CI | scripts in the session scratchpad (`e2e2`-`e5.js`); `.github/workflows/ci.yml` has no browser job | UI regressions are only caught by hand | H | **Resolved in Phase 1** (`frontend/e2e/`, CI job `e2e`) |
 | D3 | No frontend unit/component tests | `git ls-files frontend/src | grep -c test` → 0 | Builder logic (auto-connect, rename references, undo) is untested below e2e level | M | Verified |
 | D4 | Docker images never built in this environment | no Docker daemon; CI job `images` exists | First real build may fail | M | Assumption (CI not observed) |
+| D6 | Microsoft sign-in tested only against a simulated IdP | `tests/test_tenancy_auth.py` (`entra` fixture signs ID tokens with a local RSA key) | Real Entra claim shapes (e.g. groups overage) not exercised | M | Verified (gap) |
 | D5 | Real model behaviour never exercised | Ollama/HF blocked; all AI paths ran on `dev/mock_llm.py` | AI-builder draft quality and tool-calling reliability on local models unknown | H | Verified (gap) |
 
 ## Runtime architecture
@@ -20,12 +21,15 @@ Security issues are listed separately in `SECURITY_FINDINGS.md`.
 |---|---|---|---|---|---|
 | A1 | Async runs execute on an in-process thread pool | `services/runs.py:31` `_pool = ThreadPoolExecutor(...)`, `submit_run` line 216 | A pod restart loses queued/running work (later marked failed by `fail_stale_runs`, line 220); capacity scales only with API pods; no back-pressure | H | Verified |
 | A2 | Long LLM calls block request threads | sync endpoints `routers/agents.py:146 run_agent_endpoint`, `routers/workflows.py:247 test`, `routers/chat.py:71 send_message` run the whole agent/workflow in the request | Each slow run holds one of FastAPI's worker threads and a DB connection (`database.py:10` pool 10+10) for minutes | H | Verified (code) |
-| A3 | List endpoints load whole tables and filter in Python | `routers/agents.py:65` `... .all() if can_view(user, a)`; `routers/workflows.py:55 list_workflows` (`_listable` after `.all()`); `routers/credentials.py list_credentials` | O(rows) per request, no pagination | M | Verified |
+| A3 | List endpoints load whole tables and filter in Python (**agents, workflows, connections, triggers, runs now filtered in SQL by organization/visibility**; pagination still missing on most) | `routers/agents.py:65` `... .all() if can_view(user, a)`; `routers/workflows.py:55 list_workflows` (`_listable` after `.all()`); `routers/credentials.py list_credentials` | O(rows) per request, no pagination | M | Verified |
 | A4 | Metrics computed in Python over all finished runs in the window | `routers/admin.py:67` `durations = sorted(...)` | Slow for large histories (30-day window) | M | Verified |
 | A5 | Step outputs stored untruncated in `runs.steps` | `services/workflow_engine.py:325` `step.update(output=out, ...)`; HTTP bodies up to 50 kB each, loops up to 200 results | Large JSON rows; History page payloads grow | M | Verified |
 | A6 | Platform settings cached 10 s per process | `services/platform_settings.py:14` | An admin disabling a step takes up to 10 s to apply on other replicas | L | Verified |
 | A7 | Scheduler has no health probe and fails each tick until migrations exist | `deploy/k8s/base/scheduler.yaml` (0 probes); run log `no such table: triggers` | Silent scheduler death is not detected by Kubernetes | M | Verified |
 | A8 | Scheduler executes due runs inline in its loop | `services/scheduler.py tick` → `execute_run` | One slow scheduled workflow delays every other trigger | M | Verified (code) |
+
+| A9 | Auth/public rate limits are in-process | `app/ratelimit.py` (per pod) | With N API pods the effective limit is up to N× higher; enough against single-source abuse, not a global quota | L | Verified |
+| A10 | Each authenticated request reads user, session and organization | `rbac.get_current_user` | Three primary-key lookups per request; fine at current scale, cache later if needed | L | Verified |
 
 ## Code structure
 

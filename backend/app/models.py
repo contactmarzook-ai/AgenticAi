@@ -23,6 +23,27 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+DEFAULT_ORG_ID = 1
+
+
+class Organization(Base):
+    """A tenant. Every user and every agent, workflow, run, trigger and connection belongs to one."""
+
+    __tablename__ = "organizations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+def _org_fk():
+    # No default on purpose: code that forgets to set the organization fails instead of silently
+    # putting the record in some tenant.
+    return mapped_column(ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -30,7 +51,13 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    role: Mapped[str] = mapped_column(String(32), default="user")  # user | builder | admin
+    # platform_admin | org_admin | developer | operator | viewer | auditor (see rbac.py)
+    role: Mapped[str] = mapped_column(String(32), default="operator")
+    # Fixed at creation: a user never moves between organizations.
+    org_id: Mapped[int] = _org_fk()
+    # How the user signs in: "local" (password) or "oidc" (Microsoft Entra ID); oidc_subject is the IdP's id.
+    auth_provider: Mapped[str] = mapped_column(String(20), default="local", server_default="local")
+    oidc_subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
     department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -79,6 +106,7 @@ class Agent(Base):
     __tablename__ = "agents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = _org_fk()
     name: Mapped[str] = mapped_column(String(200), index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     system_prompt: Mapped[str] = mapped_column(Text, default="")
@@ -104,6 +132,7 @@ class Workflow(Base):
     __table_args__ = (UniqueConstraint("group_id", "version", name="uq_workflow_group_version"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = _org_fk()
     group_id: Mapped[str] = mapped_column(String(32), index=True, default=lambda: uuid.uuid4().hex)
     version: Mapped[int] = mapped_column(Integer, default=1)
     name: Mapped[str] = mapped_column(String(200), index=True)
@@ -125,6 +154,7 @@ class Run(Base):
     __table_args__ = (Index("ix_runs_target", "target_type", "target_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = _org_fk()
     target_type: Mapped[str] = mapped_column(String(20))  # agent | workflow
     target_id: Mapped[int] = mapped_column(Integer)
     target_name: Mapped[str] = mapped_column(String(200), default="")
@@ -155,6 +185,7 @@ class Trigger(Base):
     __tablename__ = "triggers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = _org_fk()
     name: Mapped[str] = mapped_column(String(200))
     workflow_group_id: Mapped[str] = mapped_column(String(32), index=True)  # always runs the active version
     type: Mapped[str] = mapped_column(String(20))  # schedule | webhook | form
@@ -204,6 +235,9 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -224,6 +258,7 @@ class Credential(Base):
     __tablename__ = "credentials"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    org_id: Mapped[int] = _org_fk()
     name: Mapped[str] = mapped_column(String(200))
     type: Mapped[str] = mapped_column(String(50), index=True)
     data_encrypted: Mapped[str] = mapped_column(Text)
@@ -242,3 +277,23 @@ class PlatformSetting(Base):
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AuthSession(Base):
+    """A signed-in session. Holds the (hashed) refresh token; access tokens carry its id (`sid`)."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    refresh_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # The previous refresh token: presenting it again means it was stolen, so the session is revoked.
+    prev_refresh_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
+    method: Mapped[str] = mapped_column(String(20), default="password")  # password | oidc
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -25,7 +25,20 @@ data:
   LOGIN_IP_FAILURES_PER_10MIN: "30"
   CHAT_HISTORY_MESSAGES: "10"
   MAX_MESSAGE_CHARS: "8000"
-  JWT_EXPIRE_MINUTES: "480"
+  JWT_EXPIRE_MINUTES: "15"               # access token; renewed silently from the session cookie
+  REFRESH_EXPIRE_HOURS: "12"             # absolute session length
+  AUTH_REQUESTS_PER_MINUTE: "60"         # per address, per pod: sign-in / refresh / Microsoft sign-in
+  PUBLIC_REQUESTS_PER_MINUTE: "60"       # per address, per pod: public form links
+  MAX_REQUEST_BYTES: "2000000"
+  LOCAL_LOGIN_ENABLED: "true"            # false = Microsoft sign-in only (platform admins keep passwords)
+  # Microsoft Entra ID sign-in (enabled when tenant, client id, OIDC_CLIENT_SECRET and redirect URI are set)
+  OIDC_TENANT_ID: ""
+  OIDC_CLIENT_ID: ""
+  OIDC_REDIRECT_URI: ""                  # https://<your host>/api/auth/oidc/callback
+  OIDC_ROLE_MAP: "{}"                    # {"<app role or group id>": "developer", ...}
+  OIDC_DEFAULT_ROLE: ""                  # role for unmapped first-time users; empty = refuse
+  OIDC_ORG_SLUG: default
+  OIDC_ALLOWED_DOMAINS: ""
   LOGIN_MAX_ATTEMPTS: "5"
   LOGIN_LOCKOUT_MINUTES: "15"
   PASSWORD_MIN_LENGTH: "12"

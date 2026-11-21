@@ -42,18 +42,19 @@ def _credential_ok(db: Session, owner: Optional[User], cred_id: Any, allowed_typ
         cred = db.get(Credential, int(cred_id))
     except (TypeError, ValueError):
         cred = None
-    if cred is None:
+    # Another organization's connection is reported exactly like a missing one (no id probing).
+    if cred is None or owner is None or cred.org_id != owner.org_id:
         return "the selected connection no longer exists"
     if cred.type not in allowed_types:
         return "the selected connection is the wrong kind"
-    if owner is not None and not can_view(owner, cred):
+    if not can_view(owner, cred):
         return "the workflow owner does not have access to the selected connection"
     return None
 
 
 def _agent_ok(db: Session, owner: Optional[User], agent_id: Any) -> Optional[str]:
     agent = db.get(Agent, int(agent_id)) if str(agent_id or "").isdigit() else None
-    if agent is None or (owner is not None and not can_view(owner, agent)):
+    if agent is None or owner is None or not can_view(owner, agent):
         return "choose an agent"
     if not agent.is_active:
         return f"agent '{agent.name}' is disabled"

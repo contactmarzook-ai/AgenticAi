@@ -81,7 +81,7 @@ const BADGE = {
 };
 
 export function Badge({ color = 'gray', children }) {
-  return <span className={cx('inline-block rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset', BADGE[color])}>{children}</span>;
+  return <span className={cx('inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset', BADGE[color])}>{children}</span>;
 }
 
 export function StatusBadge({ status }) {

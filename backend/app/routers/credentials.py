@@ -11,21 +11,23 @@ from ..crypto import decrypt_json, encrypt_json
 from ..database import get_db
 from ..models import Credential, User, Workflow
 from ..nodes import CREDENTIAL_TYPES
-from ..rbac import ROLE_LEVEL, can_view, get_current_user
+from ..rbac import can_view, is_admin, require_permission, role_level, same_org, visible_filter
 from ..schemas import CredentialIn, CredentialOut, CredentialTestOut
 from ..services.platform_settings import get_settings
 
 router = APIRouter(prefix="/api/credentials", tags=["connections"])
+# Builders, admins and auditors (read-only) see connections; viewers and operators never need them.
+_reader = require_permission("tool:read")
 
 
 def _require_creator(db: Session, user: User) -> None:
-    min_role = get_settings(db).get("connections_min_role", "builder")
-    if ROLE_LEVEL.get(user.role, -1) < ROLE_LEVEL.get(min_role, 99):
+    min_role = get_settings(db).get("connections_min_role", "developer")
+    if role_level(user.role) < max(role_level(min_role), 2) or user.role == "auditor":
         raise HTTPException(status_code=403, detail=f"Only {min_role}s can manage connections")
 
 
 def _can_edit(user: User, cred: Credential) -> bool:
-    return user.role == "admin" or cred.owner_id == user.id
+    return same_org(user, cred) and (is_admin(user) or cred.owner_id == user.id)
 
 
 def _out(cred: Credential, user: User) -> CredentialOut:
@@ -87,8 +89,8 @@ def _get(db: Session, cred_id: int, user: User) -> Credential:
 
 
 @router.get("", response_model=list[CredentialOut])
-def list_credentials(type: str | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    q = db.query(Credential)
+def list_credentials(type: str | None = None, db: Session = Depends(get_db), user: User = Depends(_reader)):
+    q = visible_filter(db.query(Credential), Credential, user)
     if type:
         q = q.filter(Credential.type.in_(type.split("|")))
     return [_out(c, user) for c in q.order_by(Credential.name).all() if can_view(user, c)]
@@ -96,7 +98,7 @@ def list_credentials(type: str | None = None, db: Session = Depends(get_db), use
 
 @router.post("", response_model=CredentialOut, status_code=201)
 def create_credential(
-    body: CredentialIn, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    body: CredentialIn, request: Request, db: Session = Depends(get_db), user: User = Depends(_reader)
 ):
     _require_creator(db, user)
     ctype = CREDENTIAL_TYPES.get(body.type)
@@ -109,6 +111,7 @@ def create_credential(
         visibility=body.visibility,
         department=user.department,
         owner_id=user.id,
+        org_id=user.org_id,
     )
     db.add(cred)
     db.flush()
@@ -131,7 +134,7 @@ def update_credential(
     body: CredentialIn,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(_reader),
 ):
     _require_creator(db, user)
     cred = _get(db, cred_id, user)
@@ -157,9 +160,8 @@ def update_credential(
 
 
 @router.delete("/{cred_id}")
-def delete_credential(
-    cred_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-):
+def delete_credential(cred_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(_reader)):
+    _require_creator(db, user)
     cred = _get(db, cred_id, user)
     if not _can_edit(user, cred):
         raise HTTPException(status_code=403, detail="Only the owner or an admin can delete this connection")
@@ -178,10 +180,10 @@ def _uses(definition: dict, cred_id: int) -> bool:
 
 
 @router.get("/{cred_id}/usage")
-def usage(cred_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def usage(cred_id: int, db: Session = Depends(get_db), user: User = Depends(_reader)):
     """Automations (non-archived versions) that use this connection."""
     _get(db, cred_id, user)
-    rows = db.query(Workflow).filter(Workflow.status != "archived").all()
+    rows = db.query(Workflow).filter(Workflow.org_id == user.org_id, Workflow.status != "archived").all()
     return [
         {
             "id": w.id if can_view(user, w) else None,
@@ -196,9 +198,7 @@ def usage(cred_id: int, db: Session = Depends(get_db), user: User = Depends(get_
 
 
 @router.post("/{cred_id}/test", response_model=CredentialTestOut)
-def test_credential(
-    cred_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-):
+def test_credential(cred_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(_reader)):
     """Check a connection works: Slack/Teams get a short test message; email signs in to the server."""
     cred = _get(db, cred_id, user)
     if not _can_edit(user, cred):

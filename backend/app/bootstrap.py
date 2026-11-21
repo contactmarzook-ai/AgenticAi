@@ -2,11 +2,12 @@
 
 import logging
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .models import LLMModel, LLMProvider, User
+from .models import DEFAULT_ORG_ID, LLMModel, LLMProvider, Organization, User
 from .security import hash_password, password_problems
 
 logger = logging.getLogger("agentos.bootstrap")
@@ -22,13 +23,33 @@ def seed(db: Session) -> None:
 
 
 def _seed(db: Session) -> None:
+    if db.query(Organization).count() == 0:
+        db.add(Organization(id=DEFAULT_ORG_ID, name="Default organization", slug="default"))
+        db.flush()
+        if db.get_bind().dialect.name == "postgresql":
+            # The id was set explicitly, so move the sequence past it.
+            db.execute(
+                text(
+                    "SELECT setval(pg_get_serial_sequence('organizations', 'id'), (SELECT MAX(id) FROM organizations))"
+                )
+            )
+        db.commit()
+
     if db.query(User).count() == 0:
         email, password = settings.bootstrap_admin_email.strip().lower(), settings.bootstrap_admin_password
         if email and password:
             problems = password_problems(password)
             if problems:
                 raise RuntimeError("BOOTSTRAP_ADMIN_PASSWORD " + "; ".join(problems))
-            db.add(User(email=email, full_name="Administrator", role="admin", password_hash=hash_password(password)))
+            db.add(
+                User(
+                    email=email,
+                    full_name="Administrator",
+                    role="platform_admin",
+                    org_id=DEFAULT_ORG_ID,
+                    password_hash=hash_password(password),
+                )
+            )
             db.commit()
             logger.info("Created bootstrap admin %s", email)
         else:

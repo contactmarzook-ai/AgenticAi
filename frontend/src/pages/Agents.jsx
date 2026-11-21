@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bot, Pencil, Play, Plus, Wrench } from 'lucide-react';
+import { isAdmin } from '../lib/roles';
 import api, { errorMessage } from '../lib/api';
 import { can } from '../lib/auth';
 import { Alert, Badge, Button, Checkbox, Empty, Field, Input, Modal, PageHeader, Select, Textarea } from '../lib/ui';
@@ -211,8 +212,8 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
               <option value="public">Everyone</option>
             </Select>
           </Field>
-          <Field label="Department" hint={user.role === 'admin' ? 'Admins can set any department.' : 'Always your own department.'}>
-            <Input value={user.role === 'admin' ? form.department : user.department || ''} disabled={user.role !== 'admin'} onChange={(e) => set('department', e.target.value)} />
+          <Field label="Department" hint={isAdmin(user) ? 'Admins can set any department.' : 'Always your own department.'}>
+            <Input value={isAdmin(user) ? form.department : user.department || ''} disabled={!isAdmin(user)} onChange={(e) => set('department', e.target.value)} />
           </Field>
           <div className="pt-6">
             <Checkbox label="Enabled" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />

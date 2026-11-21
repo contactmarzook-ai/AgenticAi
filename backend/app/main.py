@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 import uuid
 
@@ -31,11 +32,14 @@ from .routers import (
 )
 
 logger = logging.getLogger("agentos.http")
+_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
 def create_app() -> FastAPI:
     settings.validate()
     configure_logging(settings.log_level, settings.log_json)
+    if settings.is_production and not settings.cookie_secure:
+        logger.warning("COOKIE_SECURE is false: session cookies can travel over plain HTTP. Use only for trials.")
 
     if settings.auto_create_tables:
         Base.metadata.create_all(bind=engine)
@@ -59,16 +63,22 @@ def create_app() -> FastAPI:
             allow_origins=settings.cors_origins,
             allow_credentials=False,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-            allow_headers=["Authorization", "Content-Type", "X-Webhook-Token", "X-Request-ID"],
+            allow_headers=["Authorization", "Content-Type", "X-Webhook-Token", "X-Form-Token", "X-Request-ID"],
         )
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        supplied = request.headers.get("x-request-id", "")
+        # Only accept short, plain ids from clients (they end up in logs and audit rows).
+        request_id = supplied if _REQUEST_ID.fullmatch(supplied) else uuid.uuid4().hex[:16]
         request.state.request_id = request_id
         started = time.monotonic()
+        length = request.headers.get("content-length")
         try:
-            response = await call_next(request)
+            if length is not None and (not length.isdigit() or int(length) > settings.max_request_bytes):
+                response = JSONResponse({"detail": "Request body too large"}, status_code=413)
+            else:
+                response = await call_next(request)
         except Exception:
             logger.exception("Unhandled error", extra={"request_id": request_id, "path": request.url.path})
             response = JSONResponse({"detail": "Internal server error", "request_id": request_id}, status_code=500)
@@ -77,6 +87,14 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Cache-Control"] = "no-store"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        if not request.url.path.startswith("/api/docs"):
+            # The API only returns JSON: nothing in a response may load or run anything.
+            response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        if settings.is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if request.url.path not in ("/healthz", "/readyz"):
             logger.info(
                 "request",
@@ -110,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(triggers.hooks)
     app.include_router(triggers.public)
     app.include_router(workflows.templates_router)
+    app.include_router(users.orgs_router)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():

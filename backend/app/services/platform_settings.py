@@ -20,8 +20,8 @@ DEFAULTS = {
     "http_allowed_hosts": [],
     # Allow requests to private/internal IP ranges (intranet APIs). Off by default (SSRF protection).
     "allow_private_network": False,
-    # Who may create saved connections: "builder" or "admin".
-    "connections_min_role": "builder",
+    # Who may create saved connections: "developer" or "org_admin".
+    "connections_min_role": "developer",
     # Let builders draft workflows from a plain-language description.
     "ai_builder_enabled": True,
     # Upper bound for the Wait step.

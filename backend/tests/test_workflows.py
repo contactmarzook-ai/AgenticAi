@@ -255,8 +255,8 @@ def test_users_see_only_their_runs(client, admin, make_user, llm):
 
 
 def test_workflow_visibility(client, make_user):
-    builder = make_user("b@example.com", "builder", department="ops")
-    other = make_user("o@example.com", "builder", department="hr")
+    builder = make_user("b@example.com", "developer", department="ops")
+    other = make_user("o@example.com", "developer", department="hr")
     wf = client.post(
         "/api/workflows", headers=builder, json={"name": "Private", "visibility": "private", "definition": {}}
     ).json()

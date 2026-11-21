@@ -37,11 +37,19 @@ probes and schema wait (A7); Prometheus metrics; pin resolved IPs for outbound H
 SHAs and image digests (L9); Starlette upgrade; split `FlowBuilder.jsx` and add component tests
 (C1/D3 in technical debt).
 
-## Phase 3 - Enterprise identity
+## Security phase (done 2026-11-21) - tenants, roles, identity
 
-OIDC sign-in (Microsoft Entra ID first) with group → role/department mapping; option to disable
-local passwords; HttpOnly cookie sessions with CSRF protection and server-side revocation (L8);
-audit export.
+Organizations with tenant isolation on every endpoint; roles viewer / operator / developer /
+auditor / org admin / platform admin; server-side sessions with rotating HttpOnly refresh cookies
+(SameSite=Strict, scoped to `/api/auth`; the API itself uses bearer tokens, so no CSRF surface),
+logout and logout-all (L8); Microsoft Entra ID OIDC with app-role/group → role mapping and an
+option to disable local passwords; per-address rate limits on auth and public endpoints. See
+`docs/SECURITY_MODEL.md`.
+
+## Phase 3 - Enterprise identity (remaining)
+
+Group → department mapping from Entra ID; organization chosen per Entra tenant (multi-tenant
+SSO); audit export; acceptance test against a real Entra tenant.
 
 ## Phase 4 - Integrations and human-in-the-loop
 
@@ -58,3 +66,5 @@ visibility using the same RBAC.
 - ~~Merge `claude/review-96bswd` into `main`~~ - done at the owner's request (fast-forward).
 - Allow `www.vivriticapital.com` in the environment network settings to apply the brand palette.
 - Provide a GPU/LLM endpoint for a real-model acceptance test (D5).
+- Register the app in Entra ID and try Microsoft sign-in end to end (only tested against a
+  simulated identity provider here).

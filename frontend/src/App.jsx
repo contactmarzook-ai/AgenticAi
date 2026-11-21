@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Activity, Bot, History, KeyRound, LogOut, MessageSquare, Plug, ScrollText, Server, SlidersHorizontal, Users as UsersIcon, Workflow } from 'lucide-react';
-import api from './lib/api';
+import api, { refreshSession, signOut } from './lib/api';
+import { roleLabel } from './lib/roles';
 import { can, useAuth } from './lib/auth';
 import { cx } from './lib/ui';
 import Login from './pages/Login';
@@ -60,12 +61,20 @@ function SignedInApp() {
   const [page, go] = usePage();
   const [showPassword, setShowPassword] = useState(false);
 
+  // No token yet: the browser may still hold a session cookie (page reload, or back from
+  // Microsoft sign-in). Try it once before showing the sign-in page.
+  const [resumed, setResumed] = useState(!!token);
+  useEffect(() => {
+    if (!resumed) refreshSession().catch(() => {}).finally(() => setResumed(true));
+  }, [resumed]);
+
   useEffect(() => {
     if (token && !user) {
       api.get('/auth/me').then((r) => setUser(r.data)).catch(() => logout({ expired: true }));
     }
   }, [token, user, setUser, logout]);
 
+  if (!token && !resumed) return <div className="flex h-screen items-center justify-center text-sm text-muted-strong">Loading…</div>;
   if (!token) return <Login />;
   if (!user) return <div className="flex h-screen items-center justify-center text-sm text-muted-strong">Loading…</div>;
 
@@ -104,13 +113,14 @@ function SignedInApp() {
         <div className="border-t border-white/10 p-2 text-sm md:p-3">
           <div className="hidden truncate px-2 font-medium text-white md:block" title={user.email}>{user.full_name || user.email}</div>
           <div className="mb-2 hidden px-2 text-xs text-navy-200 md:block">
-            <span className="capitalize">{user.role}</span>
+            <span>{roleLabel(user.role)}</span>
+            {user.org_name ? ` · ${user.org_name}` : ''}
             {user.department ? ` · ${user.department}` : ''}
           </div>
-          <button onClick={() => setShowPassword(true)} title="Change password" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-navy-100 hover:bg-navy-600 hover:text-white md:justify-start">
+          {user.auth_provider !== 'oidc' && <button onClick={() => setShowPassword(true)} title="Change password" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-navy-100 hover:bg-navy-600 hover:text-white md:justify-start">
             <KeyRound className="h-4 w-4 flex-shrink-0" /> <span className="hidden md:inline">Change password</span>
-          </button>
-          <button onClick={() => confirmLeave() && logout()} title="Sign out" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-red-200 hover:bg-red-500/15 hover:text-white md:justify-start">
+          </button>}
+          <button onClick={() => confirmLeave() && signOut()} title="Sign out" className="flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-red-200 hover:bg-red-500/15 hover:text-white md:justify-start">
             <LogOut className="h-4 w-4 flex-shrink-0" /> <span className="hidden md:inline">Sign out</span>
           </button>
         </div>

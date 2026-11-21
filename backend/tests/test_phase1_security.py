@@ -29,8 +29,8 @@ def make_key(client, headers, name="Key", visibility="private", value="SECRET-12
 
 # ---------- C1 / L7: only the owner or an admin edits ----------
 def test_department_builder_cannot_edit_or_version_someone_elses_workflow(client, make_user):
-    alice = make_user("alice@example.com", "builder", department="eng")
-    bob = make_user("bob@example.com", "builder", department="eng")
+    alice = make_user("alice@example.com", "developer", department="eng")
+    bob = make_user("bob@example.com", "developer", department="eng")
     secret = make_key(client, alice)
     wf = client.post(
         "/api/workflows",
@@ -61,7 +61,7 @@ def test_department_builder_cannot_edit_or_version_someone_elses_workflow(client
 
 
 def test_admin_made_version_keeps_the_original_owner(client, admin, make_user):
-    bob = make_user("bob@example.com", "builder", department="eng")
+    bob = make_user("bob@example.com", "developer", department="eng")
     wf = client.post("/api/workflows", headers=bob, json={"name": "B", "definition": chain(start(), finish())}).json()
     v2 = client.post(
         "/api/workflows",
@@ -72,8 +72,8 @@ def test_admin_made_version_keeps_the_original_owner(client, admin, make_user):
 
 
 def test_department_builder_cannot_edit_someone_elses_agent(client, make_user):
-    alice = make_user("alice@example.com", "builder", department="eng")
-    bob = make_user("bob@example.com", "builder", department="eng")
+    alice = make_user("alice@example.com", "developer", department="eng")
+    bob = make_user("bob@example.com", "developer", department="eng")
     agent = create_agent(client, alice, visibility="department")
     assert (
         client.put(
@@ -237,7 +237,15 @@ def test_concurrent_runs_are_capped(client, admin):
     me = db.query(User).filter_by(email=ADMIN[0]).one()
     for _ in range(5):
         db.add(
-            Run(target_type="agent", target_id=agent["id"], target_name="x", status="running", input={}, user_id=me.id)
+            Run(
+                target_type="agent",
+                target_id=agent["id"],
+                target_name="x",
+                status="running",
+                input={},
+                user_id=me.id,
+                org_id=me.org_id,
+            )
         )
     db.commit()
     db.close()
@@ -280,7 +288,10 @@ def test_connection_usage_hides_names_and_tests_need_ownership(client, admin, ma
     client.post(
         "/api/workflows", headers=admin, json={"name": "Admin secret flow", "visibility": "private", "definition": d}
     )
-    user = make_user("u@example.com", "user")
+    # Operators never see connections at all; a developer sees the shared connection but not the
+    # name of the private workflow that uses it.
+    assert client.get(f"/api/credentials/{cred['id']}/usage", headers=make_user("op@example.com")).status_code == 403
+    user = make_user("u@example.com", "developer")
     used = client.get(f"/api/credentials/{cred['id']}/usage", headers=user).json()
     assert used and used[0]["name"] is None and used[0]["visible"] is False
     assert client.post(f"/api/credentials/{cred['id']}/test", headers=user).status_code == 403

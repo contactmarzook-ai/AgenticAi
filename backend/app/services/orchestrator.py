@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..llm.client import LLMError, get_llm_client
 from ..models import Agent, ChatMessage, ChatSession, Run, User, Workflow, utcnow
-from ..rbac import can_view, has_permission
+from ..rbac import has_permission, visible_filter
 from .form_input import check_input, from_chat_message
 from .models_service import ModelNotAvailable, resolve_model, to_target
 from .runs import create_run, execute_run
@@ -40,9 +40,9 @@ def keyword_matches(text: str, raw_keywords: Optional[str]) -> bool:
 def accessible_targets(db: Session, user: User) -> tuple[list[Agent], list[Workflow]]:
     agents, workflows = [], []
     if has_permission(user, "agent:run"):
-        agents = [a for a in db.query(Agent).filter(Agent.is_active.is_(True)).all() if can_view(user, a)]
+        agents = visible_filter(db.query(Agent), Agent, user).filter(Agent.is_active.is_(True)).all()
     if has_permission(user, "workflow:run"):
-        workflows = [w for w in db.query(Workflow).filter(Workflow.status == "active").all() if can_view(user, w)]
+        workflows = visible_filter(db.query(Workflow), Workflow, user).filter(Workflow.status == "active").all()
     return agents, workflows
 
 

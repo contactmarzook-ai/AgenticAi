@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Agent, AuditLog, Run, User, Workflow
-from ..rbac import require_permission
+from ..rbac import is_platform_admin, require_permission
 from ..schemas import AuditOut, Page
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -24,9 +24,16 @@ def list_audit(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("audit:read")),
+    org_id: Optional[int] = None,
+    user: User = Depends(require_permission("audit:read")),
 ):
+    # Organization admins and auditors see their organization; platform admins see everything
+    # (or one organization with ?org_id=).
     q = db.query(AuditLog)
+    if not is_platform_admin(user):
+        q = q.filter(AuditLog.org_id == user.org_id)
+    elif org_id is not None:
+        q = q.filter(AuditLog.org_id == org_id)
     if action:
         q = q.filter(AuditLog.action.like(f"{action}%"))
     if user_email:
@@ -48,10 +55,11 @@ def list_audit(
 def metrics(
     hours: int = Query(24, ge=1, le=24 * 90),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("monitoring:read")),
+    user: User = Depends(require_permission("monitoring:read")),
 ):
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    runs = db.query(Run).filter(Run.created_at >= since)
+    org = user.org_id
+    runs = db.query(Run).filter(Run.org_id == org, Run.created_at >= since)
 
     by_status = dict(runs.with_entities(Run.status, func.count()).group_by(Run.status).all())
     by_source = dict(runs.with_entities(Run.source, func.count()).group_by(Run.source).all())
@@ -93,11 +101,16 @@ def metrics(
         "duration_p95_sec": round(p95, 2),
         "top_targets": [{"type": t, "name": n, "runs": c, "failed": int(f or 0)} for t, n, c, f in top],
         "inventory": {
-            "users_active": db.query(User).filter(User.is_active.is_(True)).count(),
-            "agents_active": db.query(Agent).filter(Agent.is_active.is_(True)).count(),
-            "workflows_active": db.query(Workflow).filter(Workflow.status == "active").count(),
+            "users_active": db.query(User).filter(User.org_id == org, User.is_active.is_(True)).count(),
+            "agents_active": db.query(Agent).filter(Agent.org_id == org, Agent.is_active.is_(True)).count(),
+            "workflows_active": db.query(Workflow).filter(Workflow.org_id == org, Workflow.status == "active").count(),
         },
         "failed_logins": db.query(AuditLog)
-        .filter(AuditLog.action == "auth.login", AuditLog.status != "success", AuditLog.created_at >= since)
+        .filter(
+            AuditLog.org_id == org,
+            AuditLog.action == "auth.login",
+            AuditLog.status != "success",
+            AuditLog.created_at >= since,
+        )
         .count(),
     }

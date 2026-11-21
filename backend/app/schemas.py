@@ -3,7 +3,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-Role = Literal["user", "builder", "admin"]
+Role = Literal["viewer", "operator", "developer", "auditor", "org_admin", "platform_admin"]
 Visibility = Literal["public", "department", "private"]
 
 
@@ -23,11 +23,43 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
+class SessionOut(BaseModel):
+    id: str
+    method: str
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    current: bool = False
+
+
+class OrgIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    slug: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]*$")
+
+
+class OrgUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    is_active: Optional[bool] = None
+
+
+class OrgOut(ORM):
+    id: int
+    name: str
+    slug: str
+    is_active: bool
+    created_at: datetime
+    user_count: int = 0
+
+
 class UserOut(ORM):
     id: int
     email: str
     full_name: Optional[str]
     role: str
+    org_id: int
+    auth_provider: str = "local"
     department: Optional[str]
     is_active: bool
     last_login_at: Optional[datetime]
@@ -36,14 +68,17 @@ class UserOut(ORM):
 
 class MeOut(UserOut):
     permissions: list[str] = []
+    org_name: Optional[str] = None
 
 
 class UserCreate(BaseModel):
     email: EmailStr
     full_name: Optional[str] = Field(default=None, max_length=255)
     password: str = Field(max_length=200)
-    role: Role = "user"
+    role: Role = "operator"
     department: Optional[str] = Field(default=None, max_length=100)
+    # Platform admins choose the organization; everyone else creates users in their own.
+    org_id: Optional[int] = None
 
 
 class UserUpdate(BaseModel):
@@ -359,7 +394,7 @@ class SettingsIn(BaseModel):
     disabled_nodes: Optional[list[str]] = None
     http_allowed_hosts: Optional[list[str]] = None
     allow_private_network: Optional[bool] = None
-    connections_min_role: Optional[Literal["builder", "admin"]] = None
+    connections_min_role: Optional[Literal["developer", "org_admin"]] = None
     ai_builder_enabled: Optional[bool] = None
     max_wait_seconds: Optional[int] = Field(default=None, ge=0, le=3600)
     run_retention_days: Optional[int] = Field(default=None, ge=0, le=3650)

@@ -53,7 +53,7 @@ const check = (cond, msg) => { if (!cond) throw new Error('CHECK FAILED: ' + msg
   await page.click('text=Add user');
   await field('Email').fill('new.builder@example.com');
   await field('Initial password').fill('Builder#Pass123');
-  await field('Role').selectOption('builder');
+  await field('Role').selectOption('developer');
   await page.locator('[role=dialog] button:has-text("Save")').click();
   await page.waitForSelector('text=new.builder@example.com');
   check(true, 'admin creates a user');
@@ -70,7 +70,18 @@ const check = (cond, msg) => { if (!cond) throw new Error('CHECK FAILED: ' + msg
   await page.click('button[type=submit]');
   await page.waitForSelector('text=Your workflows');
   const nav = await page.locator('nav').innerText();
-  check(!nav.includes('Users') && !nav.includes('Settings') && nav.includes('Connections'), 'builder navigation hides admin pages: ' + nav.replace(/\n/g, ' | '));
+  check(!nav.includes('Users') && !nav.includes('Settings') && nav.includes('Connections'), 'developer navigation hides admin pages: ' + nav.replace(/\n/g, ' | '));
+  // The session survives a reload without the stored access token (HttpOnly refresh cookie)...
+  await page.evaluate(() => localStorage.removeItem('agentos.token'));
+  await page.reload();
+  await page.waitForSelector('text=Your workflows');
+  check(true, 'session resumes from the refresh cookie after reload');
+  // ...and signing out ends it on the server: a reload shows the sign-in page.
+  await page.click('text=Sign out');
+  await page.waitForSelector('button[type=submit]');
+  await page.reload();
+  await page.waitForSelector('button[type=submit]');
+  check(await page.locator('text=Your workflows').count() === 0, 'sign-out ends the server session');
   console.log('ERRORS:', errors.length ? errors.join('\n') : 'none');
   await browser.close();
 })().catch(async e => { console.error('E2E FAILED:', e.message.split('\n')[0]); try { await global.__page.screenshot({ path: S + '/fail.png' }); } catch {} process.exit(1); });

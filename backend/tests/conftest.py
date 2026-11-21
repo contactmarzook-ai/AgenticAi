@@ -12,6 +12,8 @@ os.environ.update(
         "LLM_BASE_URL": "http://llm.test/v1",
         "LLM_DEFAULT_MODEL": "test-model",
         "USER_RUNS_PER_MINUTE": "1000",
+        "AUTH_REQUESTS_PER_MINUTE": "1000",
+        "PUBLIC_REQUESTS_PER_MINUTE": "1000",
         "LOGIN_MAX_ATTEMPTS": "3",
         "BCRYPT_ROUNDS": "4",
     }
@@ -24,6 +26,7 @@ from typing import Callable  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import ratelimit  # noqa: E402
 from app.bootstrap import seed  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.llm.client import LLMClient, LLMResponse, ToolCall, set_llm_client  # noqa: E402
@@ -64,6 +67,7 @@ def fresh_db():
     seed(db)
     db.close()
     invalidate_settings()
+    ratelimit.reset()
     yield
 
 
@@ -93,7 +97,7 @@ def admin(client):
 
 @pytest.fixture()
 def make_user(client, admin):
-    def _make(email: str, role: str = "user", department: str | None = "ops") -> dict:
+    def _make(email: str, role: str = "operator", department: str | None = "ops") -> dict:
         r = client.post(
             "/api/admin/users",
             headers=admin,

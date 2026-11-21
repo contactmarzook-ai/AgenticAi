@@ -1,5 +1,12 @@
 # Security findings
 
+> **Security phase (2026-11-21, later):** organizations with backend-enforced tenant isolation,
+> six roles (viewer, operator, developer, auditor, org admin, platform admin), server-side sessions
+> with 15-minute access tokens and rotating HttpOnly refresh cookies (reuse detection, logout,
+> logout-all), Microsoft Entra ID OIDC sign-in, no hard-coded JWT secret, per-address limits on
+> auth and public endpoints, request-size limit, stricter headers, log redaction. **L8 resolved.**
+> Tests: `backend/tests/test_tenancy_auth.py` (38). Model: `docs/SECURITY_MODEL.md`.
+>
 > **Phase 1 status (2026-11-21):** fixed with regression tests in `backend/tests/test_phase1_security.py`: C1, H1, M1, M2, M3, M4, M5, L1, L2 (100.64/10), L3, L4 (per-address limit), L5, L6, L7, L9 (database password), and secret masking in run history. Partially addressed: M6 (per-user concurrency cap; durable queue in Phase 2). Open: L2 DNS-rebinding window, L4 email enumeration (accepted), L8, L9 SHA/digest pinning, Starlette upgrade - all scheduled in `PHASE_ROADMAP.md`.
 
 Scope: working branch `claude/review-96bswd` (backend, frontend, deployment). Sources: an
@@ -55,7 +62,7 @@ from the cited lines, not demonstrated.
 | L5 | Webhook body read before the token is checked | `routers/triggers.py _raw_body` dependency order | Code reading | Check token first (1) |
 | L6 | Connection usage endpoint reveals names of workflows the caller cannot see; plain users can trigger connection tests | `routers/credentials.py usage, test_credential` | Code reading | Hide names; tests for owner/admin only (1) |
 | L7 | Department editors can change others' agents/workflows (visibility, prompts, tools) | `rbac.can_edit` | Code reading (same root as C1) | Owner/admin-only edit (1) |
-| L8 | No server-side logout; JWT kept 8 h in `localStorage` | `frontend/src/lib/auth.js`; no `/auth/logout` | Code reading (CSP `script-src 'self'` limits XSS) | Revocable sessions + HttpOnly cookie (3) |
+| L8 | No server-side logout; JWT kept 8 h in `localStorage` | `frontend/src/lib/auth.js`; no `/auth/logout` | Code reading (CSP `script-src 'self'` limits XSS) | **Resolved**: server-side sessions, `/auth/logout`, 15-min access token, HttpOnly refresh cookie |
 | L9 | CI actions pinned to tags not SHAs; base images not pinned by digest; compose default `POSTGRES_PASSWORD=change-me` not rejected | `.github/workflows/ci.yml`, Dockerfiles, `.env.example` | Code reading | Reject `change-me` DB passwords (1); SHA/digest pinning (2) |
 
 ## Informational
@@ -82,6 +89,10 @@ blocked. Kubernetes: non-root, read-only root FS, capabilities dropped, seccomp,
 token, ingress NetworkPolicies, secrets outside manifests.
 
 ## `main` branch (published)
+
+> **Resolved:** `main` was fast-forwarded to the working branch (Phase 1). The mock SSO endpoint
+> and the hard-coded JWT fallback below no longer exist anywhere; Microsoft sign-in is now real
+> OIDC and disabled unless configured.
 
 Re-verified on a running instance: unauthenticated admin token via `GET
 /api/auth/sso/microsoft?role=admin` (**Critical**), hard-coded JWT fallback secret (**High**), full

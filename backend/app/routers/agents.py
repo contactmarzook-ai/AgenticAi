@@ -5,7 +5,7 @@ from ..audit import audit
 from ..config import settings
 from ..database import get_db
 from ..models import Agent, LLMModel, Run, User
-from ..rbac import ROLE_LEVEL, can_edit, can_view, require_permission
+from ..rbac import can_edit, can_view, is_admin, require_permission, role_level, visible_filter
 from ..schemas import AgentIn, AgentOut, AgentRunRequest, RunOut
 from ..services.models_service import role_may_use
 from ..services.runs import create_run, enforce_rate_limit, execute_run
@@ -44,13 +44,13 @@ def _validate(db: Session, body: AgentIn, user: User) -> None:
         t = get_tool(name)
         if t is None:
             raise HTTPException(status_code=400, detail=f"Unknown tool '{name}'")
-        if ROLE_LEVEL.get(t.min_role, 99) > ROLE_LEVEL[user.role]:
+        if role_level(t.min_role) > role_level(user.role):
             raise HTTPException(status_code=403, detail=f"Your role may not attach tool '{name}'")
 
 
 def _department(body: AgentIn, user: User):
     # Only admins may place a resource in a department other than their own.
-    return (body.department or None) if user.role == "admin" else user.department
+    return (body.department or None) if is_admin(user) else user.department
 
 
 @router.get("", response_model=list[AgentOut])
@@ -59,7 +59,7 @@ def list_agents(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("agent:read")),
 ):
-    q = db.query(Agent)
+    q = visible_filter(db.query(Agent), Agent, user)
     if not include_inactive:
         q = q.filter(Agent.is_active.is_(True))
     return [_out(a, user) for a in q.order_by(Agent.name).all() if can_view(user, a)]
@@ -80,7 +80,7 @@ def create_agent(
     _validate(db, body, user)
     data = body.model_dump()
     data["department"] = _department(body, user)
-    agent = Agent(**data, owner_id=user.id)
+    agent = Agent(**data, owner_id=user.id, org_id=user.org_id)
     db.add(agent)
     db.flush()
     audit(

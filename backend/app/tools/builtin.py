@@ -15,7 +15,7 @@ AGENT_STEPS = {
     "parse_json": "user",
     "fill_template": "user",
     "compose_text": "user",
-    "http_request": "builder",
+    "http_request": "developer",
 }
 
 # Names used before the catalogue was unified; agents saved with them keep working.

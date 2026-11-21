@@ -13,6 +13,12 @@ from ..services.runs import create_run, enforce_rate_limit, submit_run
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
+def _visible_run(run: Run | None, user: User) -> bool:
+    if run is None or run.org_id != user.org_id:
+        return False
+    return run.user_id == user.id or has_permission(user, "run:read_all")
+
+
 @router.get("", response_model=Page)
 def list_runs(
     status: Optional[str] = None,
@@ -26,7 +32,7 @@ def list_runs(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("run:read_own")),
 ):
-    q = db.query(Run)
+    q = db.query(Run).filter(Run.org_id == user.org_id)
     if mine or not has_permission(user, "run:read_all"):
         q = q.filter(Run.user_id == user.id)
     if status:
@@ -38,7 +44,9 @@ def list_runs(
     if source:
         q = q.filter(Run.source == source)
     if group_id:
-        ids = [w.id for w in db.query(Workflow.id).filter(Workflow.group_id == group_id)]
+        ids = [
+            w.id for w in db.query(Workflow.id).filter(Workflow.group_id == group_id, Workflow.org_id == user.org_id)
+        ]
         q = q.filter(Run.target_type == "workflow", Run.target_id.in_(ids or [-1]))
     total = q.count()
     rows = q.order_by(Run.id.desc()).offset(offset).limit(limit).all()
@@ -48,7 +56,7 @@ def list_runs(
 @router.get("/{run_id}", response_model=RunOut)
 def get_run(run_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("run:read_own"))):
     run = db.get(Run, run_id)
-    if run is None or (run.user_id != user.id and not has_permission(user, "run:read_all")):
+    if not _visible_run(run, user):
         raise HTTPException(status_code=404, detail="Run not found")
     return run
 
@@ -62,7 +70,7 @@ def rerun(
 ):
     """Run the same agent/workflow again with the same input (workflows use the current active version)."""
     run = db.get(Run, run_id)
-    if run is None or (run.user_id != user.id and not has_permission(user, "run:read_all")):
+    if not _visible_run(run, user):
         raise HTTPException(status_code=404, detail="Run not found")
     if run.target_type == "agent":
         target = db.get(Agent, run.target_id)

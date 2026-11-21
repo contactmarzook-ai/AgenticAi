@@ -11,7 +11,7 @@ def test_health(client):
 def test_login_and_me(client, admin):
     me = client.get("/api/auth/me", headers=admin).json()
     assert me["email"] == ADMIN[0]
-    assert me["role"] == "admin"
+    assert me["role"] == "platform_admin"
     assert "user:manage" in me["permissions"]
 
 
@@ -35,16 +35,23 @@ def test_requires_token(client):
 
 
 def test_role_hierarchy():
-    assert "agent:run" in permissions_for("user")
-    assert "agent:write" not in permissions_for("user")
-    assert {"agent:run", "agent:write"} <= permissions_for("builder")
-    assert "user:manage" not in permissions_for("builder")
-    assert permissions_for("user") < permissions_for("builder") < permissions_for("admin")
+    assert "agent:run" in permissions_for("operator")
+    assert "agent:write" not in permissions_for("operator")
+    assert {"agent:run", "agent:write"} <= permissions_for("developer")
+    assert "user:manage" not in permissions_for("developer")
+    assert (
+        permissions_for("viewer")
+        < permissions_for("operator")
+        < permissions_for("developer")
+        < permissions_for("org_admin")
+        < permissions_for("platform_admin")
+    )
     assert permissions_for("nonsense") == set()
+    assert permissions_for("admin") == set()  # legacy names grant nothing
 
 
 def test_user_cannot_use_admin_or_builder_endpoints(client, make_user):
-    user = make_user("u@example.com", "user")
+    user = make_user("u@example.com", "operator")
     assert client.get("/api/admin/users", headers=user).status_code == 403
     assert client.get("/api/admin/audit", headers=user).status_code == 403
     assert client.post("/api/agents", headers=user, json={"name": "x"}).status_code == 403
@@ -52,7 +59,7 @@ def test_user_cannot_use_admin_or_builder_endpoints(client, make_user):
 
 
 def test_builder_cannot_manage_users_or_models(client, make_user):
-    builder = make_user("b@example.com", "builder")
+    builder = make_user("b@example.com", "developer")
     assert client.get("/api/admin/users", headers=builder).status_code == 403
     assert (
         client.post("/api/models/providers", headers=builder, json={"name": "x", "base_url": "http://x"}).status_code
@@ -62,12 +69,12 @@ def test_builder_cannot_manage_users_or_models(client, make_user):
 
 
 def test_role_change_invalidates_old_token(client, admin, make_user):
-    user = make_user("u2@example.com", "builder")
+    user = make_user("u2@example.com", "developer")
     uid = client.get("/api/auth/me", headers=user).json()["id"]
-    assert client.patch(f"/api/admin/users/{uid}", headers=admin, json={"role": "user"}).status_code == 200
+    assert client.patch(f"/api/admin/users/{uid}", headers=admin, json={"role": "operator"}).status_code == 200
     assert client.get("/api/auth/me", headers=user).status_code == 401
     fresh = login(client, "u2@example.com", PASSWORD)
-    assert client.get("/api/auth/me", headers=fresh).json()["role"] == "user"
+    assert client.get("/api/auth/me", headers=fresh).json()["role"] == "operator"
 
 
 def test_deactivated_user_cannot_login(client, admin, make_user):
@@ -82,7 +89,7 @@ def test_deactivated_user_cannot_login(client, admin, make_user):
 
 def test_cannot_remove_last_admin(client, admin):
     me = client.get("/api/auth/me", headers=admin).json()
-    r = client.patch(f"/api/admin/users/{me['id']}", headers=admin, json={"role": "user"})
+    r = client.patch(f"/api/admin/users/{me['id']}", headers=admin, json={"role": "operator"})
     assert r.status_code == 400
 
 

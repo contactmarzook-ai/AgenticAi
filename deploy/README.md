@@ -74,6 +74,13 @@ copy in your secret manager: if it is lost or changed, saved connections can no 
 The bootstrap admin is only created while the users table is empty. After the first sign-in,
 change that password (sidebar → Change password) and you can remove the two `BOOTSTRAP_*` keys.
 
+For Microsoft Entra ID sign-in add `--from-literal=OIDC_CLIENT_SECRET=...` to the Secret and fill
+the `OIDC_*` lines in the ConfigMap (see `docs/SECURITY_MODEL.md`). The API pods need outbound HTTPS
+to `login.microsoftonline.com`. Sessions use a Secure cookie, so serve the app over HTTPS.
+
+The bootstrap admin is a **platform admin** in the "Default organization". Create further
+organizations and their org admins under **Users**.
+
 LLM API keys (for hosted endpoints) go in the same Secret under a name starting with `LLM_KEY_`, e.g. `LLM_KEY_VLLM`;
 on the Models page set the provider's "API key environment variable" to that name.
 

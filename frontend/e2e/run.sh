@@ -11,15 +11,20 @@ OUT="${E2E_OUT:-$HERE/results}"
 WORK="$(mktemp -d)"
 mkdir -p "$OUT"
 PIDS=()
-cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null; done; rm -rf "$WORK"; }
+cleanup() { for p in "${PIDS[@]:-}"; do pkill -P "$p" 2>/dev/null; kill "$p" 2>/dev/null; done; rm -rf "$WORK"; }
 trap cleanup EXIT
 
 wait_for() { for _ in $(seq 1 60); do curl -fs -o /dev/null "$1" && return 0; sleep 1; done; echo "timeout waiting for $1"; return 1; }
 
+# Refuse to run against servers someone else left on our ports (the tests would hit stale code).
+for port in 9999 5173 8000; do
+  if curl -s -o /dev/null --max-time 2 "http://localhost:$port/"; then echo "port $port is already in use; stop that server first"; exit 1; fi
+done
+
 cd "$ROOT/backend"
 python -m uvicorn dev.mock_llm:app --port 9999 > "$OUT/mock.log" 2>&1 & PIDS+=($!)
 cd "$ROOT/frontend"
-npx vite --port 5173 --strictPort > "$OUT/vite.log" 2>&1 & PIDS+=($!)
+./node_modules/.bin/vite --port 5173 --strictPort > "$OUT/vite.log" 2>&1 & PIDS+=($!)
 wait_for http://localhost:9999/v1/models || exit 1
 wait_for http://localhost:5173/ || exit 1
 
@@ -27,7 +32,7 @@ start_api() {
   cd "$ROOT/backend"
   DATABASE_URL="sqlite:///$WORK/e2e-$1.db" BOOTSTRAP_ADMIN_EMAIL=admin@example.com BOOTSTRAP_ADMIN_PASSWORD='Admin#Passw0rd!' \
   LLM_BASE_URL=http://localhost:9999/v1 LLM_DEFAULT_MODEL=mock-model CREDENTIALS_KEY=e2e-test-key-0123456789abcdef0123456789 \
-  USER_RUNS_PER_MINUTE=500 python -m uvicorn app.main:app --port 8000 > "$OUT/api-$1.log" 2>&1 &
+  USER_RUNS_PER_MINUTE=500 AUTH_REQUESTS_PER_MINUTE=1000 python -m uvicorn app.main:app --port 8000 > "$OUT/api-$1.log" 2>&1 &
   API_PID=$!
   wait_for http://localhost:8000/healthz
 }

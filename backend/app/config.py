@@ -24,7 +24,17 @@ def _list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
-DEV_JWT_SECRET = "dev-only-insecure-secret-change-me"
+def _jwt_secret() -> str:
+    # No hard-coded fallback. Outside production an unset secret becomes a random per-process
+    # value (sessions end on restart); production refuses to start without JWT_SECRET (validate()).
+    value = os.getenv("JWT_SECRET", "")
+    if value or os.getenv("APP_ENV", "development").lower() == "production":
+        return value
+    import secrets
+
+    return secrets.token_urlsafe(48)
+
+
 DEV_CREDENTIALS_KEY = "dev-only-insecure-credentials-key"
 
 
@@ -34,10 +44,38 @@ class Settings:
     database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./agentos.db"))
 
     # Auth
-    jwt_secret: str = field(default_factory=lambda: os.getenv("JWT_SECRET", DEV_JWT_SECRET))
+    jwt_secret: str = field(default_factory=_jwt_secret)
     # Encrypts saved connection secrets. Changing it makes existing connections unreadable.
     credentials_key: str = field(default_factory=lambda: os.getenv("CREDENTIALS_KEY", DEV_CREDENTIALS_KEY))
-    jwt_expire_minutes: int = field(default_factory=lambda: _int("JWT_EXPIRE_MINUTES", 480))
+    # Access tokens are short-lived; the browser renews them with the refresh cookie until the
+    # session's absolute lifetime (REFRESH_EXPIRE_HOURS) ends or the user signs out.
+    jwt_expire_minutes: int = field(default_factory=lambda: _int("JWT_EXPIRE_MINUTES", 15))
+    refresh_expire_hours: int = field(default_factory=lambda: _int("REFRESH_EXPIRE_HOURS", 12))
+    # Secure cookies need HTTPS; defaults to on in production.
+    cookie_secure: bool = field(
+        default_factory=lambda: _bool("COOKIE_SECURE", os.getenv("APP_ENV", "development").lower() == "production")
+    )
+    # Set to false to allow only Microsoft sign-in (bootstrap/platform admins can still use passwords).
+    local_login_enabled: bool = field(default_factory=lambda: _bool("LOCAL_LOGIN_ENABLED", True))
+    auth_requests_per_minute: int = field(default_factory=lambda: _int("AUTH_REQUESTS_PER_MINUTE", 60))
+    public_requests_per_minute: int = field(default_factory=lambda: _int("PUBLIC_REQUESTS_PER_MINUTE", 60))
+    max_request_bytes: int = field(default_factory=lambda: _int("MAX_REQUEST_BYTES", 2_000_000))
+
+    # Microsoft Entra ID (OIDC). Sign-in is enabled only when tenant, client id, secret and
+    # redirect URI are all set.
+    oidc_tenant_id: str = field(default_factory=lambda: os.getenv("OIDC_TENANT_ID", ""))
+    oidc_client_id: str = field(default_factory=lambda: os.getenv("OIDC_CLIENT_ID", ""))
+    oidc_client_secret: str = field(default_factory=lambda: os.getenv("OIDC_CLIENT_SECRET", ""))
+    oidc_redirect_uri: str = field(default_factory=lambda: os.getenv("OIDC_REDIRECT_URI", ""))
+    oidc_authority: str = field(
+        default_factory=lambda: os.getenv("OIDC_AUTHORITY", "https://login.microsoftonline.com").rstrip("/")
+    )
+    # JSON object: Entra app-role value or group object id -> Star Dust role (never platform_admin).
+    oidc_role_map: str = field(default_factory=lambda: os.getenv("OIDC_ROLE_MAP", "{}"))
+    # Role for first-time users with no mapped role; empty = refuse them until an admin adds them.
+    oidc_default_role: str = field(default_factory=lambda: os.getenv("OIDC_DEFAULT_ROLE", ""))
+    oidc_org_slug: str = field(default_factory=lambda: os.getenv("OIDC_ORG_SLUG", "default"))
+    oidc_allowed_domains: list[str] = field(default_factory=lambda: _list("OIDC_ALLOWED_DOMAINS"))
     login_max_attempts: int = field(default_factory=lambda: _int("LOGIN_MAX_ATTEMPTS", 5))
     login_ip_failures_per_10min: int = field(default_factory=lambda: _int("LOGIN_IP_FAILURES_PER_10MIN", 30))
     login_lockout_minutes: int = field(default_factory=lambda: _int("LOGIN_LOCKOUT_MINUTES", 15))
@@ -78,6 +116,10 @@ class Settings:
     log_json: bool = field(default_factory=lambda: _bool("LOG_JSON", False))
 
     @property
+    def oidc_enabled(self) -> bool:
+        return bool(self.oidc_tenant_id and self.oidc_client_id and self.oidc_client_secret and self.oidc_redirect_uri)
+
+    @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
 
@@ -85,7 +127,7 @@ class Settings:
         if not self.is_production:
             return
         problems = []
-        if self.jwt_secret == DEV_JWT_SECRET or len(self.jwt_secret) < 32 or self.jwt_secret.startswith("change-me"):
+        if len(self.jwt_secret) < 32 or self.jwt_secret.startswith("change-me"):
             problems.append("JWT_SECRET must be set to a random value of at least 32 characters")
         if (
             self.credentials_key == DEV_CREDENTIALS_KEY
@@ -99,6 +141,12 @@ class Settings:
             problems.append("DATABASE_URL must point to PostgreSQL in production")
         if self.auto_create_tables:
             problems.append("AUTO_CREATE_TABLES must be false in production (use Alembic migrations)")
+        if "*" in self.cors_origins:
+            problems.append("CORS_ORIGINS must list explicit origins, not '*'")
+        if self.jwt_expire_minutes > 60:
+            problems.append("JWT_EXPIRE_MINUTES must be at most 60 in production (sessions renew automatically)")
+        if self.oidc_enabled and not self.oidc_redirect_uri.startswith("https://"):
+            problems.append("OIDC_REDIRECT_URI must use https:// in production")
         if problems:
             raise RuntimeError("Refusing to start: " + "; ".join(problems))
 
