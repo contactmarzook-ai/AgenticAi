@@ -16,6 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from .contracts import DEFAULT_INPUT_SCHEMA, DEFAULT_OUTPUT_SCHEMA
 from .database import Base
 
 
@@ -112,6 +113,13 @@ class Agent(Base):
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     model_id: Mapped[Optional[int]] = mapped_column(ForeignKey("llm_models.id", ondelete="SET NULL"), nullable=True)
     tools: Mapped[list] = mapped_column(JSON, default=list)  # names from the tool registry
+    # Contract (JSON Schema, see contracts.py). Every agent has one; the defaults are
+    # {message: string} -> {answer: string}.
+    input_schema: Mapped[dict] = mapped_column(JSON, default=lambda: dict(DEFAULT_INPUT_SCHEMA))
+    output_schema: Mapped[dict] = mapped_column(JSON, default=lambda: dict(DEFAULT_OUTPUT_SCHEMA))
+    # Discovery metadata: what the agent can do (e.g. "invoice.extract") and free labels.
+    capabilities: Mapped[list] = mapped_column(JSON, default=list)
+    tags: Mapped[list] = mapped_column(JSON, default=list)
     trigger_keywords: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     temperature: Mapped[float] = mapped_column(Float, default=0.2)
     max_steps: Mapped[int] = mapped_column(Integer, default=6)

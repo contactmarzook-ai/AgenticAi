@@ -59,9 +59,9 @@ def test_conditions(left, op, right, expected):
 def test_branching_skips_untaken_path_and_join_waits():
     calls = []
 
-    def agent(agent_id, message):
-        calls.append((agent_id, message))
-        return {"answer": f"agent{agent_id}:{message}"}
+    def agent(agent_id, agent_input):
+        calls.append((agent_id, agent_input["message"]))
+        return {"answer": f"agent{agent_id}:{agent_input['message']}"}
 
     definition = {
         "nodes": [

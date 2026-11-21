@@ -35,6 +35,12 @@ export default function RunSteps({ steps }) {
                 <Badge color="indigo">{s.type === 'action' ? s.action : s.type === 'input' ? 'start' : s.type === 'end' ? 'finish' : s.type}</Badge>
                 <span className="font-medium">{s.label || s.node_id}</span>
               </>
+            ) : s.type === 'validation' ? (
+              <>
+                <Badge color={s.valid ? 'green' : 'red'}>{s.stage} check</Badge>
+                <span className={s.valid ? 'text-green-700' : 'text-red-700'}>{s.valid ? 'matches the contract' : 'does not match the contract'}</span>
+                {s.attempt > 1 && <span className="text-xs text-muted-strong">attempt {s.attempt}</span>}
+              </>
             ) : s.type === 'tool' ? (
               <>
                 <Badge color="blue">tool</Badge>
@@ -56,6 +62,11 @@ export default function RunSteps({ steps }) {
                 </div>
               ))}
             </>
+          )}
+          {s.type === 'validation' && !s.valid && (
+            <ul className="space-y-0.5 text-xs text-red-700">
+              {(s.errors || []).map((e, j) => <li key={j}><span className="font-mono">{e.path}</span>: {e.message}</li>)}
+            </ul>
           )}
           {s.type === 'tool' && !s.node_id && (
             <div className="space-y-1 font-mono text-xs">

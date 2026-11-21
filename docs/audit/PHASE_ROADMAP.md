@@ -46,6 +46,17 @@ logout and logout-all (L8); Microsoft Entra ID OIDC with app-role/group → role
 option to disable local passwords; per-address rate limits on auth and public endpoints. See
 `docs/SECURITY_MODEL.md`.
 
+## Agent framework phase (done 2026-11-21) - standardized agent contracts
+
+JSON Schema input/output contracts on every agent (default `{message} -> {answer}`), validated
+by one backend implementation before and after each run (with one repair attempt for output),
+workflow mappings checked against the contract at publish time, chat input mapping, capability
+metadata and tags for discovery. Note: the brief referenced `AgentManagement.jsx` and handler /
+input / output schema fields from the old `main`; that code was removed when the frontend was
+rebuilt, so contracts were added to the current agents (system prompt + trusted step/tool
+registry) rather than restored. Workflow *start forms* still use their own field list (not JSON
+Schema); converting them is a follow-up.
+
 ## Phase 3 - Enterprise identity (remaining)
 
 Group → department mapping from Entra ID; organization chosen per Entra tenant (multi-tenant

@@ -95,6 +95,33 @@ To add a building block, add a step in `backend/app/nodes/` with the `@node(...)
 form schema (`Field`s). The builder renders its form automatically; add its key to `AGENT_STEPS`
 to offer it to agents as well.
 
+### Agent contracts
+
+Every agent has an **input contract** and an **output contract**, written in JSON Schema (object,
+string, integer, number, boolean, array, nested objects, required/optional fields, allowed values,
+defaults, descriptions). The default is `{message: text} → {answer: text}`. One implementation
+(`backend/app/contracts.py`) checks schemas when they are saved and validates values everywhere an
+agent runs (API, chat, workflow steps). The agent editor edits the same JSON Schema document,
+with a field editor and a raw JSON view.
+
+- **Before a run** the input is validated, and defaults are filled in. Invalid input is rejected
+  with a list of `path: problem` items, and nothing runs.
+- **After a run** the answer is parsed and validated against the output contract. A wrong
+  answer gets one correction attempt, then the run fails. Every check is recorded as a step in
+  run history.
+- **Workflows:** a *Run an agent* step maps one value per input field, with variables allowed.
+  Unknown fields, missing required fields and fixed values of the wrong type are refused when
+  the workflow is published. Values that only become known while the workflow runs are checked
+  at that point. The agent's output fields become variables for later steps.
+- **Chat** passes the message to agents that take a message, or that have exactly one required
+  text field. For other agents, chat explains which fields are needed.
+- **Capabilities and tags:**
+  - Capabilities (e.g. `order.lookup`) and tags (e.g. `sales`) describe what an agent can do.
+  - The API adds derived ones: `tool:<name>` for each attached tool, plus `structured-input` and
+    `structured-output`.
+  - Filter agents with `GET /api/agents?capability=…&tag=…`.
+  - The chat router sees capabilities, tags and required inputs when choosing an agent.
+
 **Choosing a local model:** tool calling only works with models trained for it. With Ollama,
 use e.g. `qwen2.5:7b-instruct` or `llama3.1:8b` (pull them first). Mark models that cannot call
 tools as such on the Models page.

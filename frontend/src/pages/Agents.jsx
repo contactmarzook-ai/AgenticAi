@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Pencil, Play, Plus, Wrench } from 'lucide-react';
+import { Bot, CheckCircle2, Pencil, Play, Plus, Wrench, XCircle } from 'lucide-react';
 import { isAdmin } from '../lib/roles';
 import api, { errorMessage } from '../lib/api';
 import { can } from '../lib/auth';
 import { Alert, Badge, Button, Checkbox, Empty, Field, Input, Modal, PageHeader, Select, Textarea } from '../lib/ui';
-import RunSteps from './RunSteps';
+import RunSteps, { ResultView } from './RunSteps';
+import SchemaEditor, { SchemaForm } from './agents/SchemaEditor';
 
 const BLANK = {
   name: '',
@@ -18,7 +19,15 @@ const BLANK = {
   visibility: 'department',
   department: '',
   is_active: true,
+  capabilities: [],
+  tags: [],
 };
+
+const isSimpleInput = (schema) => {
+  const props = Object.keys(schema?.properties || {});
+  return props.length === 1 && props[0] === 'message';
+};
+const splitSlugs = (text) => text.split(',').map((s) => s.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean);
 
 export default function Agents({ user }) {
   const canWrite = can(user, 'agent:write');
@@ -29,6 +38,7 @@ export default function Agents({ user }) {
   const [editing, setEditing] = useState(null);
   const [trying, setTrying] = useState(null);
   const [error, setError] = useState('');
+  const [defaults, setDefaults] = useState(null);
 
   const load = useCallback(() => {
     api.get('/agents', { params: { include_inactive: showInactive } }).then((r) => setAgents(r.data)).catch((e) => setError(errorMessage(e)));
@@ -36,6 +46,7 @@ export default function Agents({ user }) {
 
   useEffect(() => {
     load();
+    api.get('/agents/contract-defaults').then((r) => setDefaults(r.data)).catch(() => {});
     if (canWrite) {
       api.get('/models').then((r) => setModels(r.data));
       api.get('/tools').then((r) => setTools(r.data));
@@ -53,7 +64,7 @@ export default function Agents({ user }) {
           <>
             {canWrite && <Checkbox label="Show disabled" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />}
             {canWrite && (
-              <Button icon={Plus} onClick={() => setEditing({ ...BLANK })}>
+              <Button icon={Plus} disabled={!defaults} onClick={() => setEditing({ ...BLANK, ...defaults })}>
                 New agent
               </Button>
             )}
@@ -84,6 +95,15 @@ export default function Agents({ user }) {
                   </div>
                 </div>
                 <p className="mb-3 line-clamp-3 flex-1 text-sm text-muted-strong">{a.description || 'No description.'}</p>
+                {(a.capabilities.length > 0 || a.tags.length > 0) && (
+                  <div className="mb-2 flex flex-wrap gap-1">
+                    {a.capabilities.map((c) => <Badge key={c} color="indigo">{c}</Badge>)}
+                    {a.tags.map((t) => <Badge key={t}>#{t}</Badge>)}
+                  </div>
+                )}
+                <p className="mb-2 text-xs text-muted-strong" title="Input fields → output fields">
+                  <span className="font-medium">Contract:</span> {Object.keys(a.input_schema.properties || {}).join(', ') || '—'} → {Object.keys(a.output_schema.properties || {}).join(', ') || '—'}
+                </p>
                 <div className="mb-3 flex flex-wrap gap-1">
                   {a.tools.map((t) => (
                     <span key={t} className="inline-flex items-center gap-1 rounded bg-app px-1.5 ring-1 ring-inset ring-line py-0.5 font-mono text-xs text-muted-strong">
@@ -110,14 +130,14 @@ export default function Agents({ user }) {
           </div>
         )}
       </div>
-      {editing && <AgentEditor agent={editing} models={models} tools={tools} user={user} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {editing && <AgentEditor agent={editing} defaults={defaults} models={models} tools={tools} user={user} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
       {trying && <TryAgent agent={trying} onClose={() => setTrying(null)} />}
     </div>
   );
 }
 
-function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
-  const [form, setForm] = useState(agent);
+function AgentEditor({ agent, defaults, models, tools, user, onClose, onSaved }) {
+  const [form, setForm] = useState({ ...agent, capabilitiesText: (agent.capabilities || []).join(', '), tagsText: (agent.tags || []).join(', ') });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -141,6 +161,10 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
       visibility: form.visibility,
       department: form.department || null,
       is_active: form.is_active,
+      input_schema: form.input_schema,
+      output_schema: form.output_schema,
+      capabilities: splitSlugs(form.capabilitiesText),
+      tags: splitSlugs(form.tagsText),
     };
     try {
       if (form.id) await api.put(`/agents/${form.id}`, body);
@@ -219,6 +243,30 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
             <Checkbox label="Enabled" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
           </div>
         </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Capabilities" hint="What it can do, comma separated, e.g. invoice.extract, order.lookup. The chat router and workflow builders use these to find agents.">
+            <Input value={form.capabilitiesText} onChange={(e) => set('capabilitiesText', e.target.value)} placeholder="order.lookup" />
+          </Field>
+          <Field label="Tags" hint="Free labels for finding agents, e.g. finance, hr.">
+            <Input value={form.tagsText} onChange={(e) => set('tagsText', e.target.value)} placeholder="sales" />
+          </Field>
+        </div>
+        <details className="rounded-md border p-3 text-sm" open={!isSimpleInput(form.input_schema) || JSON.stringify(form.output_schema) !== JSON.stringify(defaults?.output_schema)}>
+          <summary className="cursor-pointer text-muted-strong">Input and output contract</summary>
+          <p className="mt-2 text-xs text-muted-strong">
+            What the agent accepts and what it must return. Inputs are checked before it runs; its answer is checked against the output fields (it gets one chance to fix a wrong answer, then the run fails).
+          </p>
+          <div className="mt-3 space-y-4">
+            <div data-contract="input">
+              <div className="mb-1 text-xs font-semibold text-navy">Input</div>
+              <SchemaEditor value={form.input_schema} onChange={(v) => set('input_schema', v)} defaultSchema={defaults?.input_schema} simpleLabel="a single message" />
+            </div>
+            <div data-contract="output">
+              <div className="mb-1 text-xs font-semibold text-navy">Output</div>
+              <SchemaEditor value={form.output_schema} onChange={(v) => set('output_schema', v)} defaultSchema={defaults?.output_schema} simpleLabel="a text answer" />
+            </div>
+          </div>
+        </details>
         <details className="rounded-md border p-3 text-sm">
           <summary className="cursor-pointer text-muted-strong">Advanced</summary>
           <div className="mt-3">
@@ -241,46 +289,142 @@ function AgentEditor({ agent, models, tools, user, onClose, onSaved }) {
 }
 
 function TryAgent({ agent, onClose }) {
+  const simple = isSimpleInput(agent.input_schema);
   const [message, setMessage] = useState('');
+  const [input, setInput] = useState({});
+  const [asJson, setAsJson] = useState(false);
+  const [jsonText, setJsonText] = useState('{}');
+  const [inputCheck, setInputCheck] = useState(null); // {valid, errors}
   const [run, setRun] = useState(null);
+  const [elapsed, setElapsed] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const payload = () => {
+    if (simple) return { message };
+    if (asJson) {
+      try {
+        return JSON.parse(jsonText);
+      } catch {
+        return jsonText; // the server reports "must be an object"
+      }
+    }
+    return input;
+  };
+
+  const checkInput = async () => {
+    setError('');
+    try {
+      const r = await api.post(`/agents/${agent.id}/check`, { input: payload() });
+      setInputCheck(r.data.input);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
 
   const go = async () => {
     setLoading(true);
     setError('');
     setRun(null);
+    setInputCheck(null);
+    const t0 = performance.now();
     try {
-      setRun((await api.post(`/agents/${agent.id}/run`, { message })).data);
+      const r = await api.post(`/agents/${agent.id}/run`, { input: payload() });
+      setRun(r.data);
+      setInputCheck({ valid: true, errors: [] });
     } catch (err) {
-      setError(errorMessage(err));
+      const fields = err.response?.status === 422 ? err.response.data?.detail?.fields : null;
+      if (fields) setInputCheck({ valid: false, errors: fields });
+      else setError(errorMessage(err));
     } finally {
+      setElapsed(Math.round(performance.now() - t0));
       setLoading(false);
     }
   };
 
+  const outputChecks = (run?.steps || []).filter((s) => s.type === 'validation' && s.stage === 'output');
+  const lastOutput = outputChecks[outputChecks.length - 1];
+  const duration = run?.started_at && run?.finished_at ? new Date(run.finished_at) - new Date(run.started_at) : elapsed;
+
   return (
-    <Modal wide title={`Try ${agent.name}`} onClose={onClose}>
-      <div className="space-y-3">
-        <Textarea rows={3} placeholder="Ask the agent something…" value={message} onChange={(e) => setMessage(e.target.value)} className="font-sans" />
-        <Button icon={Play} onClick={go} loading={loading} disabled={!message.trim()}>
-          Run
-        </Button>
-        <Alert>{error}</Alert>
-        {run && (
-          <div className="space-y-3">
-            {run.status === 'succeeded' ? (
-              <div className="whitespace-pre-wrap rounded-md border bg-app p-3 text-sm">{run.output?.answer}</div>
-            ) : (
-              <Alert>{run.error}</Alert>
+    <Modal wide title={`Test ${agent.name}`} onClose={onClose}>
+      <div className="space-y-4">
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-navy">Input</h3>
+            {!simple && (
+              <button type="button" className="text-xs text-brand-600 hover:underline" onClick={() => { setJsonText(JSON.stringify(input, null, 2)); setAsJson(!asJson); }}>
+                {asJson ? 'Use the form' : 'Edit as JSON'}
+              </button>
             )}
-            <p className="text-xs text-muted-strong">
-              {run.model_name} · {run.llm_calls} LLM calls · {run.prompt_tokens + run.completion_tokens} tokens
-            </p>
-            <RunSteps steps={run.steps} />
           </div>
+          {simple ? (
+            <Textarea rows={3} placeholder="Ask the agent something…" value={message} onChange={(e) => setMessage(e.target.value)} className="font-sans" />
+          ) : asJson ? (
+            <Textarea rows={8} className="font-mono text-xs" value={jsonText} onChange={(e) => setJsonText(e.target.value)} aria-label="Input JSON" />
+          ) : (
+            <SchemaForm schema={agent.input_schema} value={input} onChange={setInput} />
+          )}
+          <div className="mt-2 flex gap-2">
+            <Button icon={Play} onClick={go} loading={loading} disabled={simple && !message.trim()}>Run</Button>
+            {!simple && <Button variant="secondary" onClick={checkInput}>Check input</Button>}
+          </div>
+        </section>
+        <Alert>{error}</Alert>
+        {inputCheck && <ValidationResult title="Input validation" check={inputCheck} />}
+        {run && (
+          <>
+            <section className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-app px-3 py-2 text-sm">
+              <span className="font-medium text-navy">Execution</span>
+              <Badge color={run.status === 'succeeded' ? 'green' : 'red'}>{run.status}</Badge>
+              {duration != null && <span className="text-muted-strong">{(duration / 1000).toFixed(2)} s</span>}
+              <span className="text-xs text-muted-strong">{run.model_name} · {run.llm_calls} LLM calls · {run.prompt_tokens + run.completion_tokens} tokens</span>
+            </section>
+            {run.output && (
+              <section>
+                <h3 className="mb-1 text-sm font-semibold text-navy">Output</h3>
+                <ResultView value={Object.keys(run.output).length === 1 && 'answer' in run.output ? run.output.answer : run.output} />
+              </section>
+            )}
+            {lastOutput && (
+              <ValidationResult
+                title={`Output validation${outputChecks.length > 1 ? ` (${outputChecks.length} attempts)` : ''}`}
+                check={lastOutput}
+                note={outputChecks.length > 1 && lastOutput.valid ? 'The first answer did not match; the agent corrected it.' : null}
+              />
+            )}
+            {run.error && (
+              <section>
+                <h3 className="mb-1 text-sm font-semibold text-navy">Error details</h3>
+                <Alert>{run.error}</Alert>
+              </section>
+            )}
+            <details className="text-sm">
+              <summary className="cursor-pointer text-muted-strong">Steps ({run.steps.length})</summary>
+              <div className="mt-2"><RunSteps steps={run.steps} /></div>
+            </details>
+          </>
         )}
       </div>
     </Modal>
+  );
+}
+
+function ValidationResult({ title, check, note }) {
+  return (
+    <section className={check.valid ? 'rounded-md border border-green-200 bg-green-50 p-3 text-sm' : 'rounded-md border border-red-200 bg-red-50 p-3 text-sm'}>
+      <div className="flex items-center gap-2 font-medium">
+        {check.valid ? <CheckCircle2 className="h-4 w-4 text-green-700" /> : <XCircle className="h-4 w-4 text-red-700" />}
+        <span className={check.valid ? 'text-green-800' : 'text-red-800'}>{title}: {check.valid ? 'passed' : 'failed'}</span>
+      </div>
+      {note && <p className="mt-1 text-xs text-green-800">{note}</p>}
+      {!check.valid && (
+        <ul className="mt-1 space-y-0.5 text-xs text-red-800">
+          {check.errors.map((e, i) => (
+            <li key={i}><span className="font-mono">{e.path}</span>: {e.message}</li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

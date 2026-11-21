@@ -14,6 +14,7 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from .. import contracts
 from ..config import settings
 from ..crypto import decrypt_json
 from ..database import SessionLocal
@@ -83,6 +84,13 @@ def create_run(
     return run
 
 
+def agent_input(run_input: dict) -> dict:
+    """The agent's input object. Runs store {"input": {...}}; older runs and chat store {"message"}."""
+    if isinstance(run_input.get("input"), dict):
+        return run_input["input"]
+    return {"message": str(run_input.get("message", ""))}
+
+
 def _history_for(input_data: dict) -> list[dict]:
     hist = input_data.get("history") or []
     return [m for m in hist if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
@@ -112,8 +120,8 @@ def _execute(db: Session, run: Run, usage: dict) -> None:
         agent = db.get(Agent, run.target_id)
         if agent is None:
             raise AgentRunError("Agent no longer exists")
-        res = run_agent(db, agent, str(run.input.get("message", "")), role, history=_history_for(run.input))
-        run.output = {"answer": res.answer}
+        res = run_agent(db, agent, agent_input(run.input), role, history=_history_for(run.input))
+        run.output = res.output
         run.steps = res.steps
         usage.update(
             prompt=res.prompt_tokens, completion=res.completion_tokens, calls=res.llm_calls, model=res.model_name
@@ -129,19 +137,19 @@ def _execute(db: Session, run: Run, usage: dict) -> None:
     if owner is not None and not owner.is_active:
         owner = None
 
-    def call_agent(agent_id: int, message: str) -> dict:
+    def call_agent(agent_id: int, input_data: dict) -> dict:
         agent = db.get(Agent, agent_id)
         if agent is None or owner is None or not can_view(owner, agent):
             raise NodeError("This agent is not available to the workflow's owner")
         try:
-            res = run_agent(db, agent, message, role)
+            res = run_agent(db, agent, contracts.coerce(agent.input_schema or {}, input_data), role)
         except AgentRunError as exc:
             raise NodeError(str(exc)) from exc
         usage["prompt"] += res.prompt_tokens
         usage["completion"] += res.completion_tokens
         usage["calls"] += res.llm_calls
         usage["model"] = res.model_name
-        return {"answer": res.answer, "agent": agent.name}
+        return {**res.output, **({} if "agent" in res.output else {"agent": agent.name})}
 
     def get_credential(cred_id, expected_type: str) -> dict:
         try:
@@ -206,7 +214,7 @@ def execute_run(run_id: int) -> None:
             run = db.get(Run, run_id)
             run.status = "failed"
             run.error = str(exc)
-            if isinstance(exc, WorkflowError) and exc.steps:
+            if getattr(exc, "steps", None):
                 run.steps = exc.steps
         except Exception as exc:  # unexpected bug: record it, don't leak a traceback to users
             logger.exception("Run %s crashed", run_id)

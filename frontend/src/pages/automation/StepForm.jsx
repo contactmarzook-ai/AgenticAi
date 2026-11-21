@@ -5,7 +5,7 @@ import { Button, Checkbox, Field, Input, Select, cx } from '../../lib/ui';
 import ConnectionEditor from './ConnectionEditor';
 
 /** Keys a step is expected to output, used to offer variables to later steps. */
-export function outputKeys(node, catalog) {
+export function outputKeys(node, catalog, agents = []) {
   if (!node) return [];
   if (node.type === 'input') return (node.data?.fields || []).map((f) => f.key);
   if (node.type === 'condition') return ['result'];
@@ -15,13 +15,18 @@ export function outputKeys(node, catalog) {
   const cfg = node.data?.config || {};
   if (node.data?.action === 'set_fields') return Object.keys(cfg.fields || {});
   if (node.data?.action === 'ai_extract') return (cfg.fields || []).filter(Boolean);
+  if (node.data?.action === 'run_agent') {
+    // A Run-an-agent step outputs whatever the agent's output contract declares.
+    const agent = agents.find((a) => a.id === Number(cfg.agent_id));
+    return agent ? [...Object.keys(agent.output_schema?.properties || {}), 'agent'] : ['answer'];
+  }
   const nt = catalog.find((n) => n.key === node.data?.action);
   const hint = nt?.output_hint || '';
   return [...hint.matchAll(/([a-z_]+)/g)].map((m) => m[1]).filter((k) => k !== 'your' && k !== 'field' && k !== 'names');
 }
 
 /** All variables available to a node: the start form plus every step that can run before it. */
-export function availableVariables(nodeId, nodes, edges, catalog) {
+export function availableVariables(nodeId, nodes, edges, catalog, agents = []) {
   const parents = new Map();
   edges.forEach((e) => parents.set(e.target, [...(parents.get(e.target) || []), e.source]));
   const seen = new Set();
@@ -35,7 +40,7 @@ export function availableVariables(nodeId, nodes, edges, catalog) {
   const groups = [];
   nodes.forEach((n) => {
     if (!seen.has(n.id)) return;
-    const keys = outputKeys(n, catalog);
+    const keys = outputKeys(n, catalog, agents);
     const root = n.type === 'input' ? 'input' : n.id;
     if (keys.length || n.type === 'action') {
       groups.push({ label: n.type === 'input' ? 'Start form' : n.data?.label || n.id, vars: keys.map((k) => ({ label: k, value: `{{${root}.${k}}}` })), root });
@@ -202,11 +207,64 @@ function CredentialSelect({ value, onChange, credentialType, credentialTypes }) 
 }
 
 /** Renders the form for one catalog step type. */
+/** One value per field of the chosen agent's input contract (variables allowed). Nested groups
+ *  and lists are entered as JSON. The server checks the mapping against the contract. */
+function AgentInputEditor({ agent, value, groups, onChange }) {
+  if (!agent) return <p className="text-xs text-muted-strong">Choose an agent first.</p>;
+  const schema = agent.input_schema || {};
+  const props = schema.properties || {};
+  const required = schema.required || [];
+  const current = value && typeof value === 'object' ? value : {};
+  const set = (k, v) => {
+    const next = { ...current };
+    if (v === '' || v === undefined) delete next[k];
+    else next[k] = v;
+    onChange(next);
+  };
+  return (
+    <div className="space-y-2 rounded-md border border-line bg-app p-2">
+      {Object.entries(props).map(([k, sub]) => {
+        const v = current[k];
+        const text = v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v);
+        const structured = sub.type === 'object' || sub.type === 'array';
+        return (
+          <div key={k}>
+            <div className="mb-0.5 text-xs text-muted-strong">
+              <span className="font-mono text-ink">{k}</span>
+              {required.includes(k) ? ' *' : ''} · {sub.type}
+              {sub.enum ? ` (${sub.enum.join(' | ')})` : ''}
+              {sub.default !== undefined ? ` · default ${JSON.stringify(sub.default)}` : ''}
+              {sub.description ? ` — ${sub.description}` : ''}
+            </div>
+            <VarText
+              multiline={structured}
+              rows={structured ? 3 : undefined}
+              value={text}
+              groups={groups}
+              placeholder={structured ? (sub.type === 'array' ? '["a", "b"] or {{step.list}}' : '{"name": "{{input.name}}"}') : ''}
+              onChange={(t) => set(k, t)}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const takesMessage = (agent) => {
+  const props = Object.keys(agent?.input_schema?.properties || {});
+  const req = agent?.input_schema?.required || [];
+  return !agent || (props.includes('message') && req.every((r) => r === 'message'));
+};
+
 export default function StepForm({ nodeType, config, onChange, groups, agents, credentialTypes }) {
   const set = (k, v) => onChange({ ...config, [k]: v });
+  const chosenAgent = nodeType.key === 'run_agent' ? (agents || []).find((a) => a.id === Number(config.agent_id)) : null;
+  const hidden = (f) =>
+    nodeType.key === 'run_agent' && ((f.key === 'message' && !takesMessage(chosenAgent)) || (f.key === 'input' && takesMessage(chosenAgent)));
   return (
     <div className="space-y-3">
-      {nodeType.fields.map((f) => {
+      {nodeType.fields.filter((f) => !hidden(f)).map((f) => {
         const value = config[f.key] ?? f.default ?? '';
         const label = `${f.label}${f.required ? ' *' : ''}`;
         let input;
@@ -237,6 +295,9 @@ export default function StepForm({ nodeType, config, onChange, groups, agents, c
             break;
           case 'json':
             input = <JsonField value={value} onChange={(v) => set(f.key, v)} />;
+            break;
+          case 'agent_input':
+            input = <AgentInputEditor agent={chosenAgent} value={config[f.key]} groups={groups} onChange={(v) => set(f.key, v)} />;
             break;
           case 'keyvalue':
             input = <KeyValueEditor value={value || {}} groups={groups} onChange={(v) => set(f.key, v)} />;

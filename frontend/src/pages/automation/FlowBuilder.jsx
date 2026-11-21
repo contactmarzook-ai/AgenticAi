@@ -529,7 +529,7 @@ export default function FlowBuilder({ workflow, draft, catalog, credentialTypes,
     setRestore(null);
   };
 
-  const groups = selected ? availableVariables(selected.id, nodes, edges, catalog) : [];
+  const groups = selected ? availableVariables(selected.id, nodes, edges, catalog, agents) : [];
   const q = paletteQuery.trim().toLowerCase();
   const palette = catalog.filter((n) => !n.disabled && (!q || `${n.name} ${n.description}`.toLowerCase().includes(q)));
   const anchorHint = selected && selected.type !== 'end' ? `after “${selected.data?.label}”` : 'before Finish';

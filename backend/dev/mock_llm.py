@@ -109,6 +109,19 @@ def models():
     return {"object": "list", "data": [{"id": "mock-model", "object": "model"}]}
 
 
+def sample(schema: dict):
+    """A minimal value that satisfies a JSON Schema (for agents with an output contract)."""
+    if "enum" in schema:
+        return schema["enum"][0]
+    t = schema.get("type")
+    if t == "object":
+        props = schema.get("properties", {})
+        return {k: sample(props[k]) for k in schema.get("required", list(props))}
+    return {"array": [], "integer": 1, "number": 1.5, "boolean": True}.get(
+        t, "mock " + schema.get("description", "value")[:20]
+    )
+
+
 @app.post("/v1/chat/completions")
 async def chat(request: Request):
     body = await request.json()
@@ -118,6 +131,10 @@ async def chat(request: Request):
     last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {"content": ""})
     text = str(last_user.get("content") or "")
     system = str(messages[0].get("content", "")) if messages and messages[0].get("role") == "system" else ""
+
+    contract = re.search(r"matches this JSON Schema:\n(\{.*\})\s*$", system, re.S)
+    if contract and last.get("role") != "tool" and not body.get("tools"):
+        return reply({"content": json.dumps(sample(json.loads(contract.group(1))))}, prompt_text)
 
     if system.startswith("You design no-code automation workflows"):
         return reply({"content": json.dumps(draft_workflow(text.removeprefix("Automate this: ")))}, prompt_text)

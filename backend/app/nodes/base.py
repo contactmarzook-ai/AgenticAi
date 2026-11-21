@@ -8,7 +8,19 @@ Text fields accept {{ }} variables, e.g. "Hello {{input.name}}" or "{{node-2.tex
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-FIELD_TYPES = {"text", "textarea", "number", "boolean", "select", "credential", "json", "keyvalue", "list", "agent"}
+FIELD_TYPES = {
+    "text",
+    "textarea",
+    "number",
+    "boolean",
+    "select",
+    "credential",
+    "json",
+    "keyvalue",
+    "list",
+    "agent",
+    "agent_input",
+}
 
 
 @dataclass(frozen=True)
@@ -49,7 +61,7 @@ class NodeContext:
     role: str
     get_credential: Callable[[Any, str], dict]  # (credential_id, expected_type) -> secret data
     ask_llm: Callable[..., dict]  # (messages, json_mode=False, model_id=None) -> {"text", "usage"}
-    run_agent: Callable[[int, str], dict]  # (agent_id, message) -> {"answer": ...}
+    run_agent: Callable[[int, dict], dict]  # (agent_id, input object) -> the agent's output object
     settings: dict = field(default_factory=dict)  # platform settings snapshot
 
 

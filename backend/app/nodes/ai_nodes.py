@@ -155,15 +155,29 @@ def ai_translate(cfg: dict, ctx: NodeContext):
             "message",
             "Task for the agent",
             "textarea",
-            required=True,
             placeholder="Find the status of order {{input.order_id}}",
+            help="For agents that take a message.",
+        ),
+        Field(
+            "input",
+            "Agent input",
+            "agent_input",
+            help="For agents with their own input fields: one value per field (variables allowed).",
         ),
     ],
-    output_hint="{ answer }",
+    output_hint="{ answer } or the agent's own output fields",
 )
 def run_agent(cfg: dict, ctx: NodeContext):
     try:
         agent_id = int(cfg["agent_id"])
     except (TypeError, ValueError):
         raise NodeError("Choose an agent") from None
-    return ctx.run_agent(agent_id, str(cfg["message"]))
+    mapping = cfg.get("input")
+    if isinstance(mapping, str) and mapping.strip():
+        try:
+            mapping = json.loads(mapping)
+        except ValueError:
+            raise NodeError("Agent input is not valid JSON") from None
+    if isinstance(mapping, dict) and mapping:
+        return ctx.run_agent(agent_id, mapping)
+    return ctx.run_agent(agent_id, {"message": str(cfg.get("message") or "")})

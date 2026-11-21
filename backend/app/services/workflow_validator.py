@@ -1,10 +1,12 @@
 """Checks run before a workflow is tested or activated. Messages are written for non-technical users."""
 
+import json
 from typing import Any, Optional
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
+from .. import contracts
 from ..config import settings
 from ..models import Agent, Credential, User
 from ..nodes import NODE_TYPES
@@ -59,6 +61,25 @@ def _agent_ok(db: Session, owner: Optional[User], agent_id: Any) -> Optional[str
     if not agent.is_active:
         return f"agent '{agent.name}' is disabled"
     return None
+
+
+def _agent_input_problems(db: Session, agent_id: Any, config: dict) -> list[str]:
+    """Check a Run-an-agent step's input against the agent's input contract."""
+    agent = db.get(Agent, int(agent_id))
+    schema = agent.input_schema or contracts.DEFAULT_INPUT_SCHEMA
+    mapping = config.get("input")
+    if isinstance(mapping, str) and mapping.strip():
+        try:
+            mapping = json.loads(mapping)
+        except ValueError:
+            return ["agent input is not valid JSON"]
+    if isinstance(mapping, dict) and mapping:
+        return [f"agent '{agent.name}': {p}" for p in contracts.mapping_problems(schema, mapping)]
+    takes_message = "message" in (schema.get("properties") or {}) and set(schema.get("required") or []) <= {"message"}
+    if takes_message:
+        return [] if not _empty(config.get("message")) else ["fill in 'Task for the agent'"]
+    required = ", ".join(schema.get("required") or []) or "its fields"
+    return [f"agent '{agent.name}' needs its input fields filled in ({required})"]
 
 
 def validate_definition(definition: Any, db: Session, owner: Optional[User] = None) -> list[str]:
@@ -134,6 +155,8 @@ def validate_definition(definition: Any, db: Session, owner: Optional[User] = No
                     problem = _agent_ok(db, owner, value)
                     if problem:
                         errors.append(f"{label}: {problem}")
+                    elif ntype.key == "run_agent":
+                        errors.extend(f"{label}: {p}" for p in _agent_input_problems(db, value, config))
         elif n.type == "condition":
             cond = data.get("condition") or {}
             if not isinstance(cond, dict) or cond.get("operator") not in OPERATORS:

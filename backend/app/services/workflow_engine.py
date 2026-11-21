@@ -447,7 +447,7 @@ def _execute_node(
             message = workflow_input.get("message")
         if message in (None, ""):
             raise WorkflowError("Agent step has no message")
-        return call_agent(int(data.get("agent_id") or 0), str(message))
+        return call_agent(int(data.get("agent_id") or 0), {"message": str(message)})
     if ntype == "tool":
         return _wrap(call_tool(str(data.get("tool") or ""), inputs))
     if ntype == "transform":

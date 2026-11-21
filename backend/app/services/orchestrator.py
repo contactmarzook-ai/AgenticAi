@@ -14,10 +14,12 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from .. import contracts
 from ..config import settings
 from ..llm.client import LLMError, get_llm_client
 from ..models import Agent, ChatMessage, ChatSession, Run, User, Workflow, utcnow
 from ..rbac import has_permission, visible_filter
+from .agent_runtime import effective_capabilities
 from .form_input import check_input, from_chat_message
 from .models_service import ModelNotAvailable, resolve_model, to_target
 from .runs import create_run, execute_run
@@ -46,6 +48,31 @@ def accessible_targets(db: Session, user: User) -> tuple[list[Agent], list[Workf
     return agents, workflows
 
 
+def chat_input(agent: Agent, text: str) -> tuple[Optional[dict], Optional[str]]:
+    """Turn a chat message into the agent's input, when that is unambiguous.
+
+    Agents taking a message get it as-is; an agent whose only required field is text gets the
+    message in that field. Anything else needs a form, so the user is told what is required."""
+    schema = agent.input_schema or contracts.DEFAULT_INPUT_SCHEMA
+    props = schema.get("properties") or {}
+    required = list(schema.get("required") or [])
+    if "message" in props and set(required) <= {"message"}:
+        candidate = {"message": text}
+    elif len(required) == 1 and (props.get(required[0]) or {}).get("type") == "string":
+        candidate = {required[0]: text}
+    else:
+        candidate = None
+    if candidate is not None:
+        value, errors = contracts.validate(schema, candidate)
+        if not errors:
+            return value, None
+    fields = ", ".join(required) or ", ".join(props) or "structured input"
+    return None, (
+        f"'{agent.name}' needs structured input ({fields}), which a chat message cannot provide. "
+        "Use Try on the Agents page or a workflow step to fill in its fields."
+    )
+
+
 def fast_path(text: str, agents: list[Agent], workflows: list[Workflow]):
     matches = [a for a in agents if keyword_matches(text, a.trigger_keywords)]
     matches += [w for w in workflows if keyword_matches(text, w.trigger_keywords)]
@@ -61,7 +88,16 @@ def llm_route(db: Session, user: User, text: str, agents: list[Agent], workflows
         return None, None
 
     catalog = [
-        {"type": "agent", "id": a.id, "name": a.name, "description": (a.description or "")[:300]} for a in agents
+        {
+            "type": "agent",
+            "id": a.id,
+            "name": a.name,
+            "description": (a.description or "")[:300],
+            "capabilities": effective_capabilities(a)[:20],
+            "tags": (a.tags or [])[:20],
+            "needs": sorted((a.input_schema or {}).get("required") or []),
+        }
+        for a in agents
     ]
     catalog += [
         {"type": "workflow", "id": w.id, "name": w.name, "description": (w.description or "")[:300]} for w in workflows
@@ -150,7 +186,11 @@ def handle_message(db: Session, session: ChatSession, user: User, text: str) -> 
     kind = "agent" if isinstance(target, Agent) else "workflow"
     run_input = {"message": text}
     if kind == "agent":
-        run_input["history"] = history
+        agent_in, problem = chat_input(target, text)
+        if problem:
+            meta = {"routing": routing, "target": {"type": kind, "id": target.id, "name": target.name}}
+            return _reply(db, session, problem, meta)
+        run_input = {"input": agent_in, "history": history}
     else:
         run_input, problems = check_input(target.definition or {}, from_chat_message(target.definition or {}, text))
         if problems:

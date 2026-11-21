@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -153,12 +153,20 @@ class ToolOut(BaseModel):
 
 
 # ---------- agents ----------
+Slug = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_.:-]{0,49}$")]
+
+
 class AgentIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: Optional[str] = Field(default=None, max_length=2000)
     system_prompt: str = Field(default="", max_length=20000)
     model_id: Optional[int] = None
     tools: list[str] = []
+    # JSON Schema contracts; omitted/null = the default {message} -> {answer} contract.
+    input_schema: Optional[dict] = None
+    output_schema: Optional[dict] = None
+    capabilities: list[Slug] = Field(default=[], max_length=20)
+    tags: list[Slug] = Field(default=[], max_length=20)
     trigger_keywords: Optional[str] = Field(default=None, max_length=500)
     temperature: float = Field(default=0.2, ge=0, le=2)
     max_steps: int = Field(default=6, ge=1, le=50)
@@ -174,6 +182,12 @@ class AgentOut(ORM):
     system_prompt: str
     model_id: Optional[int]
     tools: list[str]
+    input_schema: dict
+    output_schema: dict
+    capabilities: list[str]
+    tags: list[str]
+    # Declared capabilities plus what the agent's tools and contract actually provide.
+    effective_capabilities: list[str] = []
     trigger_keywords: Optional[str]
     temperature: float
     max_steps: int
@@ -192,8 +206,23 @@ def _no_nul(v: str) -> str:
 
 
 class AgentRunRequest(BaseModel):
-    message: str = Field(min_length=1)
-    _clean = field_validator("message")(classmethod(lambda cls, v: _no_nul(v)))
+    """Either `input` (an object matching the agent's input schema) or, for agents with the
+    default contract, just `message`."""
+
+    message: Optional[str] = Field(default=None, min_length=1)
+    input: Optional[dict] = None
+    _clean = field_validator("message")(classmethod(lambda cls, v: _no_nul(v) if v is not None else v))
+
+
+class SchemaCheckIn(BaseModel):
+    schema_: dict = Field(alias="schema")
+
+
+class ContractCheckIn(BaseModel):
+    """Validate a value against an agent's input or output contract."""
+
+    input: Optional[dict] = None
+    output: Optional[Any] = None
 
 
 # ---------- workflows ----------
