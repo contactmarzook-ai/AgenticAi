@@ -140,7 +140,8 @@ python -m app.scheduler
 cd ../frontend && npm ci && npm run dev  # http://localhost:5173 (proxies /api to :8000)
 ```
 
-Tests: `cd backend && pytest` (SQLite). Against PostgreSQL:
+Tests: `cd backend && pytest` (SQLite). Browser tests: `cd frontend && bash e2e/run.sh`
+(see `frontend/e2e/README.md`). Against PostgreSQL:
 `TEST_DATABASE_URL=postgresql+psycopg://user:pass@host/db pytest`.
 
 ## Deploying
@@ -165,6 +166,11 @@ All settings are environment variables (see `backend/app/config.py`). The import
 | `AGENT_TIMEOUT_SECONDS` / `TOOL_TIMEOUT_SECONDS` | `300` / `30` | Per agent run / per tool call |
 | `WORKFLOW_TIMEOUT_SECONDS` / `WORKFLOW_MAX_NODES` | `900` / `50` | Per workflow run |
 | `USER_RUNS_PER_MINUTE` | `30` | Per-user limit on runs and chat messages (0 = off) |
+| `USER_MAX_CONCURRENT_RUNS` | `5` | Runs a user may have queued or running at once (0 = off) |
+| `LOGIN_IP_FAILURES_PER_10MIN` | `30` | Failed sign-ins allowed from one address per 10 minutes (0 = off) |
+| `CHAT_HISTORY_MESSAGES` | `10` | Earlier chat messages sent to agents as context |
+| `BCRYPT_ROUNDS` | `12` | Password hashing cost (tests use 4) |
+| `LLM_API_KEY_ENV` | empty | Name of the `LLM_KEY_*` variable used by the seeded default provider |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCKOUT_MINUTES` | `5` / `15` | Account lockout |
 | `PASSWORD_MIN_LENGTH` | `12` | Plus three character classes |
 | `HTTP_TOOL_ALLOWED_HOSTS` | empty | Initial outbound host allowlist; admins manage it under Settings |

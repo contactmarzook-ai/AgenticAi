@@ -4,7 +4,7 @@ Ordering rule: fix what is unsafe, then what breaks at scale, then add capabilit
 ends with: backend tests (SQLite + PostgreSQL), frontend lint/build, browser tests, manifest
 validation, updated docs, push.
 
-## Phase 1 - Security and release hardening (now)
+## Phase 1 - Security and release hardening (done 2026-11-21)
 
 Goal: the working branch is safe to deploy and its quality gates run in CI.
 
@@ -55,7 +55,6 @@ visibility using the same RBAC.
 
 ## Owner actions (cannot be done from this environment)
 
-- Merge `claude/review-96bswd` into `main` (or retire `main`): `main` is unsafe (see
-  `SECURITY_FINDINGS.md`). A pull request will be opened only when requested.
+- ~~Merge `claude/review-96bswd` into `main`~~ - done at the owner's request (fast-forward).
 - Allow `www.vivriticapital.com` in the environment network settings to apply the brand palette.
 - Provide a GPU/LLM endpoint for a real-model acceptance test (D5).

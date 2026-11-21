@@ -1,5 +1,7 @@
 # Security findings
 
+> **Phase 1 status (2026-11-21):** fixed with regression tests in `backend/tests/test_phase1_security.py`: C1, H1, M1, M2, M3, M4, M5, L1, L2 (100.64/10), L3, L4 (per-address limit), L5, L6, L7, L9 (database password), and secret masking in run history. Partially addressed: M6 (per-user concurrency cap; durable queue in Phase 2). Open: L2 DNS-rebinding window, L4 email enumeration (accepted), L8, L9 SHA/digest pinning, Starlette upgrade - all scheduled in `PHASE_ROADMAP.md`.
+
 Scope: working branch `claude/review-96bswd` (backend, frontend, deployment). Sources: an
 independent security review (read-only, with proof-of-concept scripts against a separate instance)
 and confirmation checks by the audit lead. `main` is covered at the end.

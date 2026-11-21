@@ -5,7 +5,11 @@ in a browser (Playwright), plus an independent security review (see `SECURITY_FI
 **Verified** = observed by running code or reading the exact lines cited. **Assumption** = not
 verifiable in this environment; stated as such.
 
-## 1. Two codebases exist - read this first
+> **Update after Phase 1 (2026-11-21):** at the owner's request `main` was fast-forwarded to the
+> working branch (`e1da880..7b316c1`), so the defects below no longer exist on `main`. All Phase 1
+> security fixes are in; see `SECURITY_FINDINGS.md` (Status column) and `PHASE_ROADMAP.md`.
+
+## 1. Two codebases existed at audit time - read this first
 
 | | `main` (GitHub default branch) | `claude/review-96bswd` (working branch) |
 |---|---|---|

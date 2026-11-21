@@ -8,8 +8,8 @@ Security issues are listed separately in `SECURITY_FINDINGS.md`.
 
 | # | Item | Evidence | Impact | Sev | Status |
 |---|---|---|---|---|---|
-| D1 | `main` is stale; all current work is on an unmerged branch (16 commits) | `git rev-list --count origin/main..HEAD` → 16; `main` still has `auth.py` mock SSO | Anyone deploying `main` ships the critical defects listed in the state report | H | Verified |
-| D2 | Browser tests live outside the repository and do not run in CI | scripts in the session scratchpad (`e2e2`-`e5.js`); `.github/workflows/ci.yml` has no browser job | UI regressions are only caught by hand | H | Verified |
+| D1 | `main` is stale; all current work is on an unmerged branch (16 commits) | `git rev-list --count origin/main..HEAD` → 16; `main` still has `auth.py` mock SSO | Anyone deploying `main` ships the critical defects listed in the state report | H | **Resolved in Phase 1** (main fast-forwarded) |
+| D2 | Browser tests live outside the repository and do not run in CI | scripts in the session scratchpad (`e2e2`-`e5.js`); `.github/workflows/ci.yml` has no browser job | UI regressions are only caught by hand | H | **Resolved in Phase 1** (`frontend/e2e/`, CI job `e2e`) |
 | D3 | No frontend unit/component tests | `git ls-files frontend/src | grep -c test` → 0 | Builder logic (auto-connect, rename references, undo) is untested below e2e level | M | Verified |
 | D4 | Docker images never built in this environment | no Docker daemon; CI job `images` exists | First real build may fail | M | Assumption (CI not observed) |
 | D5 | Real model behaviour never exercised | Ollama/HF blocked; all AI paths ran on `dev/mock_llm.py` | AI-builder draft quality and tool-calling reliability on local models unknown | H | Verified (gap) |
@@ -34,7 +34,7 @@ Security issues are listed separately in `SECURITY_FINDINGS.md`.
 | C1 | `FlowBuilder.jsx` is 969 lines (canvas, palette, settings panes, test dialog) | `wc -l` | Hard to change safely; untested (D3) | M | Verified |
 | C2 | Legacy node types `agent`/`tool`/`transform` still supported beside `action` | `services/workflow_validator.py:17`, `workflow_engine._execute_node` | Two ways to do the same thing in the engine | L | Verified |
 | C3 | Technical identifiers say `agentos`, product says Star Dust | image names, k8s names, `localStorage` key `agentos.token`, `X-Request-ID` logger `agentos.*` | Confusing for operators | L | Verified |
-| C4 | Three settings undocumented | `BCRYPT_ROUNDS`, `CHAT_HISTORY_MESSAGES`, `LLM_API_KEY_ENV` read in `config.py`, absent from README/configmap/.env.example | Operators cannot discover them | L | Verified |
+| C4 | Three settings undocumented (**resolved in Phase 1**) | `BCRYPT_ROUNDS`, `CHAT_HISTORY_MESSAGES`, `LLM_API_KEY_ENV` read in `config.py`, absent from README/configmap/.env.example | Operators cannot discover them | L | Verified |
 | C5 | Two fast-refresh lint warnings | `StepForm.jsx:24`, `RunForm.jsx:76` export helpers next to components | Dev-only (HMR) | L | Verified |
 | C6 | Coverage gaps | `nodes/flow_nodes.py` 44 %, `routers/llm_models.py` 59 %, `nodes/app_nodes.py` 63 %, `services/scheduler.py` 68 % | Least-tested code is the code talking to external systems | M | Verified |
 
