@@ -21,3 +21,6 @@ frontend/dist/
 *.orig
 *.rej
 .DS_Store
+
+# Local agent worktrees
+.claude/worktrees/
