@@ -133,9 +133,48 @@ you. A field that is exactly one variable keeps the value's type (numbers stay n
 New step types are added in `backend/app/nodes/` with a form schema; the UI renders them
 automatically. (Older `agent`/`tool`/`transform` node types from earlier versions still run.)
 
-A step runs after all of the steps before it have finished, if at least one incoming branch was
-taken; steps on branches that were not taken are skipped. A failing step can retry (up to 5
-times) or "keep going", in which case its output is `{ "error": "..." }`.
+**Execution.** Every step moves through these states:
+
+`pending → running → success | failed | skipped | cancelled`
+
+- **When a step runs:** only when *all* the steps leading into it have finished and at least
+  one incoming branch was taken. Steps on branches that were not taken are skipped.
+- **Parallelism:** independent branches run at the same time (`WORKFLOW_MAX_PARALLEL`).
+- **Failures:** when a step fails, no new steps start; the remaining ones are recorded as
+  *skipped (an earlier step failed)*.
+- **Per-step settings:**
+  - retries, up to 5, with a fixed or exponential delay
+  - a time limit
+  - "keep going", in which case the step's output is `{ "error": "..." }`
+- **Whole-run time limit:** `WORKFLOW_TIMEOUT_SECONDS`.
+- **Cancelling:** a queued run stops at once; a running one stops before its next step.
+
+**Durable runs.**
+- **Records:** each step is saved as it changes, in `run_nodes`, with its state, input, output,
+  error, retry log, attempt count and timestamps.
+- **The queue is the database:**
+  - API pods execute runs.
+  - A run holds a lease that is renewed every `RUN_HEARTBEAT_SECONDS`.
+  - Every pod polls for queued runs and for runs whose lease expired (`RUN_STALE_SECONDS`).
+- **After a restart:** an interrupted workflow resumes from its finished steps. A step that was
+  running when the pod died runs again, so steps run *at least once*. Interrupted agent runs
+  start over. After `RUN_MAX_RESUMES` interruptions the run fails.
+- **Schedules** only queue runs; they never execute them inline.
+- **Dedicated workers:** to run executions in their own deployment, set `RUN_WORKER_ENABLED=false`
+  on the API and start `python -m app.worker`.
+
+**Validation** (live in the builder, and again before testing or publishing):
+- **Structure:**
+  - duplicate step ids
+  - connections to missing steps, self-loops, duplicate connections, anything after Finish
+  - a missing Start or Finish step
+  - loops, and steps that cannot be reached
+- **Branches:** If/Switch branches, and If comparisons (missing values, numbers vs. text).
+- **References and inputs:** unknown or disabled steps, missing required settings,
+  agent/connection access, missing agent input mappings, references to steps that do not run
+  earlier, and references to agent output fields that do not exist.
+- **Types between steps:** e.g. a yes/no output mapped into a number input.
+- **Robustness:** malformed definitions are reported, never crash.
 
 **Repeat for each** runs one chosen step for every item of a list (up to 200), with `{{item}}`
 and `{{index}}` available inside it; its output is `{ "results": [...], "count": n }`.
@@ -146,7 +185,10 @@ the first text field. References to steps that do not exist or do not run earlie
 before publishing.
 
 Lifecycle: save a **draft** → **Test** (runs the draft; results appear on each step) →
-**Publish** (validates and makes this version live, archiving the previous one). Editing a live
+**Publish** (validates and makes this version live, archiving the previous one). A published
+version is immutable (`published_at`/`published_by` are recorded); earlier published versions
+stay in the version history with their run counts, and builders can run one explicitly.
+**Duplicate** copies any version into a new private draft. Editing a live
 automation saves a new draft version; the live one keeps running until you publish the new one
 (or *Discard draft*). **Turn off** stops schedules, form links, webhooks and chat from starting
 it; it stays in the list with **Turn on**. Unsaved builder work is kept in the browser and offered
@@ -211,6 +253,11 @@ All settings are environment variables (see `backend/app/config.py`). The import
 | `AGENT_MAX_STEPS_CAP` | `15` | Upper bound for any agent's tool steps |
 | `AGENT_TIMEOUT_SECONDS` / `TOOL_TIMEOUT_SECONDS` | `300` / `30` | Per agent run / per tool call |
 | `WORKFLOW_TIMEOUT_SECONDS` / `WORKFLOW_MAX_NODES` | `900` / `50` | Per workflow run |
+| `WORKFLOW_MAX_PARALLEL` | `4` | Steps of one run that may execute at the same time |
+| `RUN_WORKER_ENABLED` / `RUN_WORKER_THREADS` | `true` / `4` | API pods execute runs, this many at a time per pod |
+| `RUN_POLL_SECONDS` | `2` | How often each pod looks for queued or abandoned runs (0 = off) |
+| `RUN_HEARTBEAT_SECONDS` / `RUN_STALE_SECONDS` | `10` / `60` | Lease renewal, and when a silent run is taken over |
+| `RUN_MAX_RESUMES` | `3` | Interruptions after which a run fails instead of resuming |
 | `USER_RUNS_PER_MINUTE` | `30` | Per-user limit on runs and chat messages (0 = off) |
 | `USER_MAX_CONCURRENT_RUNS` | `5` | Runs a user may have queued or running at once (0 = off) |
 | `LOGIN_IP_FAILURES_PER_10MIN` | `30` | Failed sign-ins allowed from one address per 10 minutes (0 = off) |

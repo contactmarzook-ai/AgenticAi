@@ -116,6 +116,12 @@ create users under **Users**.
 - **Long requests**: agent runs can take minutes on local models, so the ingress timeouts are
   600s. Workflows started via the API or triggers run in the background; clients poll
   `GET /api/runs/{id}`.
+- **Durable runs**: the database is the run queue. Every API pod executes runs, renews a lease
+  while doing so and polls for queued or abandoned runs, so a rolling update or a crashed pod
+  does not lose work: another pod resumes the run from its finished steps within about
+  `RUN_STALE_SECONDS`. The scheduler only queues runs. For dedicated workers, run
+  `python -m app.worker` as its own Deployment (same image, same Secret/ConfigMap) and set
+  `RUN_WORKER_ENABLED=false` on the API.
 - **Pod security**: all Star Dust containers run as non-root with a read-only root filesystem,
   no privilege escalation and all capabilities dropped. The namespace enforces the `baseline`
   Pod Security Standard and warns on `restricted`, because the Ollama image runs as root. If

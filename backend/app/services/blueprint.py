@@ -16,6 +16,7 @@ Blueprint:
 `to_definition` converts it to the builder's node/edge graph and lays it out top to bottom.
 """
 
+import re
 from typing import Any
 
 TYPE_MAP = {
@@ -77,7 +78,7 @@ def to_definition(blueprint: dict) -> dict:
     for step in blueprint.get("steps") or []:
         if not isinstance(step, dict):
             continue
-        sid = str(step.get("id") or f"n{len(nodes) + 1}")[:40]
+        sid = re.sub(r"[^A-Za-z0-9_-]", "_", str(step.get("id") or f"n{len(nodes) + 1}"))[:40] or f"n{len(nodes) + 1}"
         if sid in seen:
             continue
         seen.add(sid)

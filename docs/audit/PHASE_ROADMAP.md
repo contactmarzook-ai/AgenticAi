@@ -57,6 +57,17 @@ rebuilt, so contracts were added to the current agents (system prompt + trusted 
 registry) rather than restored. Workflow *start forms* still use their own field list (not JSON
 Schema); converting them is a follow-up.
 
+## Workflow engine phase (2026-11-21) - reliable, durable execution
+
+Explicit step states (pending/running/success/failed/skipped/cancelled), dependency-correct
+scheduling with parallel branches, failure propagation, retries with backoff, step and run time
+limits, cancellation, durable per-step records (`run_nodes`) with worker leases, heartbeats and
+resume after restarts, immutable published versions with history and explicit version runs,
+stronger validation (structure, branches, types between steps, malformed input), and builder
+support for live validation, run status on the canvas, node logs and run history. Known limits:
+a step that was running when a pod died runs again (at-least-once); a timed-out or cancelled
+step's thread cannot be killed (its result is ignored).
+
 ## Phase 3 - Enterprise identity (remaining)
 
 Group → department mapping from Entra ID; organization chosen per Entra tenant (multi-tenant
